@@ -15,15 +15,16 @@ Created by **[ninjaGurung](https://github.com/ninjaGurung)**.
 - **Prompt guides:** Add model-specific writing instructions to your system prompt.
 - **Multimodal inputs:** Dynamic sockets for up to 10 images, 4 videos, and 6 audio inputs. Connecting media reveals another socket; removing it hides extra trailing sockets.
 - **Media tags:** Type `@` to suggest connected attachments, or `@im` to filter images. Tags work in both prompt fields.
-- **Readable output:** A large, read-only preview with a reusable `STRING` output. All three text areas scroll independently.
+- **Readable output:** A large, read-only preview and a `text` output that connects to any compatible STRING input. All three text areas scroll independently.
 - **Quick copying:** Copy buttons sit beside each text area's title. A checkmark confirms copying for five seconds.
 - **Saved previews and caching:** Generated text is restored with saved workflows. Unchanged runs can reuse a cached result; force regeneration when needed.
 
 ## Installation
 
-1. Download this repository and place its contents in:
-   ```text
-   ComfyUI/custom_nodes/ComfyUI-GOATd-Universal-Text-Generator/
+1. Open a terminal in your `ComfyUI/custom_nodes` folder and clone the repository:
+
+   ```bash
+   git clone https://github.com/ninjaGurung/ComfyUI-GOATd-Universal-Text-Generator.git
    ```
 2. Restart ComfyUI, then hard-refresh your browser.
 3. Find both nodes under **LLM / GOAT'd**.
