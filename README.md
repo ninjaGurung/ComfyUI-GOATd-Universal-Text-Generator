@@ -2,6 +2,8 @@
 
 **Turn your ideas into prompts, captions, and useful text without leaving ComfyUI.**
 
+**Easy to integrate into your existing ComfyUI workflows:** connect the node's `text` output to CLIP Text Encode, a text preview, or any compatible STRING input.
+
 A ComfyUI custom node for writing prompts, captions, descriptions, and other text with cloud or local LLMs. Add images, videos, or audio when your chosen model supports them. The result is a normal `STRING`, ready for Show Text, CLIP Text Encode, or another text input.
 
 Created by **[ninjaGurung](https://github.com/ninjaGurung)**.
