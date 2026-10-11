@@ -6,7 +6,7 @@ A ComfyUI custom node for writing prompts, captions, descriptions, and other tex
 
 Created by **[ninjaGurung](https://github.com/ninjaGurung)**.
 
-![GOAT'd Text Generator 🐐](examples/verified-workflow.jpg)
+**Example workflows:** [Local CLIP](workflows/GOATd_Local_Text_Gen.json) and [Server API](workflows/GOATd_API_Text_Gen.json).
 
 ## Features
 
@@ -35,21 +35,37 @@ Use a recent ComfyUI version with the V3 node API and dynamic-input support. The
 
 1. Add **GOAT'd Text Generator Settings 🐐** and **GOAT'd Text Generator 🐐**.
 2. Connect the Settings node's `settings` output to the generator's last input.
-3. Choose a provider and enter its exact model ID. For a cloud provider, supply an API key or environment variable.
+3. Choose a provider. For a server/API provider, enter its exact model ID and supply a key or environment variable when required. For **ComfyUI Local**, load a generation-capable model with **Load CLIP** or **CLIPLoader (GGUF)**; the Settings model field is ignored.
 4. Write your **Prompt Idea**, set the **System Prompt**, and choose a prompt guide or **None**.
 5. Optionally connect media. For **ComfyUI Local**, connect a generation-capable model to `clip`.
 6. Click **Run**. Read the answer in **Output**, or connect `text` to another node.
 
-```text
-Text Generator Settings ── settings ──┐
-Optional media / local CLIP ──────────┼── GOAT'd Text Generator 🐐 ── text ── Show Text / CLIP Text Encode
-                                     ┘
+```mermaid
+flowchart LR
+    settings["GOAT'd Text Generator Settings<br/>Provider + generation settings"] -->|settings| generator["GOAT'd Text Generator 🐐<br/>Prompt Idea + System Prompt + Prompt Guide"]
+    media["Optional media<br/>Images / videos / audio"] -.->|media inputs| generator
+    clip["Load CLIP / CLIPLoader (GGUF)<br/>For ComfyUI Local"] -.->|clip| generator
+    generator -->|text| preview["Show Text / Text Preview"]
+    generator -->|text| encode["CLIP Text Encode"]
 ```
+
+Solid arrows show the settings and text connections; dashed arrows show optional inputs. Read the result directly in the generator's **Output**, or connect it to a downstream node.
 
 For **CLIP Text Encode**, convert its `text` widget into an input, then connect the generator's `text` output. The generator also runs without a downstream node.
 
 **Prompt Idea:** `A small cabin beside a snowy forest at sunset.`  
 **System Prompt:** `Expand the idea into a detailed image prompt. Return only the prompt.`
+
+## Example workflows
+
+Ready-to-use examples are included in the [workflows](workflows/) folder:
+
+| Workflow | What it demonstrates |
+| --- | --- |
+| [Local CLIP text generation](workflows/GOATd_Local_Text_Gen.json) | Generate text with a model loaded directly in ComfyUI through the `clip` input. |
+| [Server API text generation](workflows/GOATd_API_Text_Gen.json) | Generate text through a provider/server configured in the Settings node. |
+
+Download a workflow JSON and drag it onto the ComfyUI canvas, or open it through ComfyUI's workflow menu. Select your available model and media files; for API workflows, configure the provider, model ID, endpoint, and credentials as needed. Click **Run** to generate text.
 
 ## Generator fields
 
@@ -71,11 +87,9 @@ For **CLIP Text Encode**, convert its `text` widget into an input, then connect 
 Compare @image1 with @image2 and describe the action in @video1.
 ```
 
-Type `@` inside either prompt area to see available connected tags. Select with a click, or use Arrow keys and Enter/Tab. Escape closes suggestions. Inserting a tag preserves the surrounding text.
+Type `@` inside either prompt area to see available connected tags. Select with a click, or use Arrow keys and Enter/Tab. Escape closes suggestions. Inserting a tag preserves the surrounding text. Tags appear as colored references: click a tag to choose a replacement, or click its `×` to remove that reference from the prompt. Removing a tag does not disconnect its media input.
 
 All connected media are sent, even when they are not tagged. Repeated tags do not resend an attachment. A tag pointing to an unconnected socket raises an error.
-
-![In-field tag suggestions](examples/tag-suggestions.jpg)
 
 ## Prompt guides
 
@@ -178,13 +192,12 @@ The CLIP input needs a complete language model that can generate text. Ordinary 
 | `gemma-4-12B` | Requires a vision-enabled checkpoint | Requires a vision-enabled checkpoint; sampled frames |
 | `Qwen3-4B-abliterated-v2_fp8mixed` | No; text-only | No; text-only |
 | `Qwen-3-VL-4B-Scaled-FP8-v2` | Yes | Yes, as sampled frames |
+| `Qwen3-VL-4B-Instruct-abliterated-fp8_scaled` | Yes | Yes, as sampled frames |
 | `qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot` | Yes | Yes, as sampled frames |
 
-The three image-capable checkpoints listed above include vision weights. The Gemma 12B checkpoint used for text-generation testing is text-only; image/video use needs a vision-enabled checkpoint and a loader that supports it. Local video analysis uses timestamped frames, without the video's soundtrack.
+The image-capable checkpoints listed above include vision weights. The Gemma 12B checkpoint used for text-generation testing is text-only; image/video use needs a vision-enabled checkpoint and a loader that supports it. Local video analysis uses timestamped frames, without the video's soundtrack.
 
 These models have been tested using **Load CLIP** for Safetensors files and **CLIPLoader (GGUF)** for GGUF files. Media support depends on the checkpoint. Larger models and longer prompts need more RAM/VRAM.
-
-Example workflows: [Qwen3 4B](examples/local_qwen3.json), [Gemma4 E2B](examples/local_gemma4.json), and [Gemma4 12B](examples/local_gemma4_gguf.json).
 
 ## Troubleshooting
 

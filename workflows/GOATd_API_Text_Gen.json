@@ -1,0 +1,242 @@
+{
+  "id": "d6940377-304d-4fc1-bbb4-a4d3982454b0",
+  "revision": 0,
+  "last_node_id": 16,
+  "last_link_id": 49,
+  "nodes": [
+    {
+      "id": 14,
+      "type": "GOATTextGeneratorSettings",
+      "pos": [
+        1479.1273941465709,
+        1960.3228262773064
+      ],
+      "size": [
+        334.1265625,
+        586
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "settings",
+          "type": "GOAT_TEXT_SETTINGS",
+          "links": [
+            48
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GOATTextGeneratorSettings"
+      },
+      "widgets_values": [
+        "Cerebras",
+        "qwen-3.8-27b",
+        "",
+        "",
+        "",
+        "disabled",
+        "medium",
+        1024,
+        0,
+        0.7,
+        -1,
+        -1,
+        -1,
+        -1,
+        0,
+        0,
+        2060367436,
+        "randomize",
+        "",
+        120,
+        false,
+        "auto",
+        0
+      ],
+      "widgets_values_named": {
+        "provider": "Cerebras",
+        "model": "qwen-3.8-27b",
+        "api_key": "",
+        "api_key_env": "",
+        "base_url": "",
+        "thinking": "disabled",
+        "reasoning_effort": "medium",
+        "max_output_tokens": 1024,
+        "context_window": 0,
+        "temperature": 0.7,
+        "top_p": -1,
+        "top_k": -1,
+        "min_p": -1,
+        "repetition_penalty": -1,
+        "frequency_penalty": 0,
+        "presence_penalty": 0,
+        "seed": 2060367436,
+        "control_after_generate": "randomize",
+        "stop_sequences": "",
+        "timeout_seconds": 120,
+        "force_regenerate": false,
+        "video_mode": "auto",
+        "video_frame_count": 0
+      }
+    },
+    {
+      "id": 15,
+      "type": "GOATUniversalTextGenerator",
+      "pos": [
+        1856.677813453762,
+        1654.7841186737567
+      ],
+      "size": [
+        560,
+        910
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images.image1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 49
+        },
+        {
+          "name": "images.image2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "videos.video1",
+          "shape": 7,
+          "type": "VIDEO",
+          "link": null
+        },
+        {
+          "name": "audios.audio1",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "clip",
+          "shape": 7,
+          "type": "CLIP",
+          "link": null
+        },
+        {
+          "name": "settings",
+          "type": "GOAT_TEXT_SETTINGS",
+          "link": 48
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GOATUniversalTextGenerator",
+        "goat_generated_text": "Create a character reference sheet of the woman shown in @image1, presented in a clean 4-slot layout with different angles of the same character. Keep the person’s identity and appearance consistent across all slots: red hair, plaid flannel shirt, denim shorts, black fishnet stockings, black lace-up boots, and holding a white electric guitar. Show the same character from four distinct views, such as front, side, three-quarter, and back, while preserving her clothing, hairstyle, accessories, and recognizable features from @image1. Use a neutral, uniform background suitable for a character sheet, with even lighting and clear visibility of the full body in each slot. Arrange the four panels evenly in a grid, maintaining consistent scale and proportions so the character appears identical in each angle."
+      },
+      "widgets_values": [
+        "Create a character sheet of the person in @image1 in 4 slots showing different angles of the character.",
+        "You are a helpful assistant. Return only the requested text, without commentary.",
+        "Qwen Image 2.1"
+      ],
+      "widgets_values_named": {
+        "prompt_idea": "Create a character sheet of the person in @image1 in 4 slots showing different angles of the character.",
+        "system_prompt": "You are a helpful assistant. Return only the requested text, without commentary.",
+        "prompt_guide": "Qwen Image 2.1"
+      }
+    },
+    {
+      "id": 16,
+      "type": "LoadImage",
+      "pos": [
+        1527.7608379340536,
+        1565.3977946408017
+      ],
+      "size": [
+        282.798828125,
+        314
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            49
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.39.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "sampler_compare_HiDreama.jpeg",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "sampler_compare_HiDreama.jpeg",
+        "upload": "image"
+      }
+    }
+  ],
+  "links": [
+    [
+      49,
+      16,
+      0,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      48,
+      14,
+      0,
+      15,
+      5,
+      "GOAT_TEXT_SETTINGS"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1.0152559799477088,
+      "offset": [
+        -139.60242821234033,
+        -1386.179387270429
+      ]
+    },
+    "workflowRendererVersion": "LG",
+    "ue_links": [],
+    "frontendVersion": "1.55.14",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4,
+  "seed_widgets": {
+    "14": 16
+  }
+}

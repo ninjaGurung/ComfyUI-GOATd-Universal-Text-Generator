@@ -33,8 +33,7 @@ export function mountTagSuggestions(node, widget) {
         state = null;
     }
     if (state) {
-        if (state.visible && connectedTags(node).join(",") !== state.tagSignature) state.refresh();
-        else if (state.visible && textarea.parentElement !== state.parent) state.position();
+        state.sync();
         return;
     }
 
@@ -56,19 +55,166 @@ export function mountTagSuggestions(node, widget) {
         whiteSpace: "pre-wrap", overflowWrap: "break-word", boxSizing: "border-box",
         top: "0", left: "0", height: "auto",
     });
+    const decorations = doc.createElement("div");
+    decorations.setAttribute("aria-label", "Media references");
+    Object.assign(decorations.style, {
+        position: "absolute", zIndex: "3", overflow: "hidden", pointerEvents: "none",
+    });
+    const text = doc.createElement("div");
+    Object.assign(text.style, {
+        position: "relative", boxSizing: "border-box", color: "transparent", userSelect: "none",
+    });
+    decorations.appendChild(text);
+    const styles = new Map(["lineHeight", "paddingTop", "paddingRight"].map((name) => [name, textarea.style[name]]));
     const attributes = new Map(["aria-autocomplete", "aria-controls", "aria-expanded", "aria-activedescendant"]
         .map((name) => [name, textarea.getAttribute(name)]));
     textarea.setAttribute("aria-autocomplete", "list");
     textarea.setAttribute("aria-controls", popup.id);
     textarea.setAttribute("aria-expanded", "false");
 
-    state = { textarea, popup, mirror, items: [], active: 0, prefix: null, visible: false, key: "", suppressedPrefix: "", listeners: [] };
+    state = { textarea, popup, mirror, decorations, styles, items: [], active: 0, prefix: null, target: null, visible: false, key: "", suppressedPrefix: "", listeners: [], composing: false };
     widget[suggestionsState] = state;
+
+    let references = [];
+
+    function layout() {
+        const parent = textarea.parentElement;
+        if (!parent) return;
+        const style = getComputedStyle(textarea);
+        // Keep the raised remove controls clear of adjacent lines and the clipped edges.
+        if (!(Number.parseFloat(style.lineHeight) >= Number.parseFloat(style.fontSize) * 1.8)) textarea.style.lineHeight = "1.8";
+        if (Number.parseFloat(style.paddingTop) < 7) textarea.style.paddingTop = "7px";
+        if (Number.parseFloat(style.paddingRight) < 5) textarea.style.paddingRight = "5px";
+        const names = ["fontFamily", "fontSize", "fontWeight", "fontStyle", "fontVariant", "fontStretch", "fontKerning", "fontFeatureSettings", "lineHeight", "letterSpacing", "wordSpacing", "textAlign", "textIndent", "textTransform", "direction", "whiteSpace", "overflowWrap", "wordBreak", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "tabSize"];
+        const key = [textarea.offsetLeft, textarea.offsetTop, textarea.clientLeft, textarea.clientTop, textarea.clientWidth, textarea.clientHeight, ...names.map((name) => style[name])].join(";");
+        if (parent === state.parent && key === state.layoutKey) return;
+        state.parent = parent;
+        state.layoutKey = key;
+        for (const element of [popup, mirror, decorations]) {
+            if (element.parentElement !== parent) parent.appendChild(element);
+        }
+        for (const name of names) {
+            mirror.style[name] = text.style[name] = style[name];
+        }
+        mirror.style.width = text.style.width = `${textarea.clientWidth}px`;
+        Object.assign(decorations.style, {
+            left: `${textarea.offsetLeft + textarea.clientLeft}px`, top: `${textarea.offsetTop + textarea.clientTop}px`,
+            width: `${textarea.clientWidth}px`, height: `${textarea.clientHeight}px`, borderRadius: style.borderRadius,
+        });
+    }
+
+    function replace(range, replacement) {
+        if (textarea.value !== state.value || textarea.value.slice(range.start, range.end) !== range.text) {
+            sync();
+            hide();
+            return;
+        }
+        hide();
+        textarea.focus();
+        textarea.setSelectionRange(range.start, range.end);
+        // Native insertion keeps replacements and removals in the textarea's undo history.
+        if (!doc.execCommand("insertText", false, replacement)) {
+            textarea.setRangeText(replacement, range.start, range.end, "end");
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        sync();
+        hide();
+    }
+
+    function decorate(tags) {
+        text.replaceChildren();
+        references = [];
+        let end = 0;
+        for (const match of textarea.value.matchAll(/(?<![\p{L}\p{N}_@])@(image|video|audio)(\p{Nd}+)(?![\p{L}\p{N}_])/gu)) {
+            text.appendChild(doc.createTextNode(textarea.value.slice(end, match.index)));
+            const range = { text: match[0], start: match.index, end: match.index + match[0].length };
+            const present = tags.includes(range.text);
+            const color = present ? "#60a5fa" : "#f87171";
+            const background = `color-mix(in srgb, var(--comfy-input-bg, #222) 85%, ${color})`;
+            const tag = doc.createElement("span");
+            Object.assign(tag.style, {
+                position: "relative", color, background, borderRadius: "3px",
+                boxShadow: `0 0 0 1px ${color}55`,
+            });
+            const label = doc.createElement("span");
+            label.textContent = range.text;
+            label.setAttribute("role", "button");
+            label.tabIndex = 0;
+            label.title = `${present ? "Connected" : "Not connected"}. Click to replace ${range.text}`;
+            label.setAttribute("aria-label", `${range.text}, ${present ? "connected" : "not connected"}. Replace reference`);
+            Object.assign(label.style, { cursor: "pointer", pointerEvents: "auto" });
+            function open() {
+                textarea.focus();
+                textarea.setSelectionRange(range.end, range.end);
+                state.target = range;
+                state.suppressedPrefix = "";
+                refresh();
+            }
+            label.onpointerdown = (event) => {
+                if (event.button !== 0) return;
+                event.preventDefault();
+                event.stopPropagation();
+                open();
+            };
+            label.onclick = (event) => event.stopPropagation();
+            label.onkeydown = (event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                event.stopPropagation();
+                open();
+            };
+            const remove = doc.createElement("button");
+            remove.type = "button";
+            remove.textContent = "×";
+            remove.title = `Remove ${range.text}`;
+            remove.setAttribute("aria-label", remove.title);
+            Object.assign(remove.style, {
+                position: "absolute", right: "-4px", top: "-7px", width: "9px", height: "9px",
+                padding: "0", margin: "0", border: "0", borderRadius: "50%", color, background,
+                font: "10px/9px sans-serif", textAlign: "center", cursor: "pointer", pointerEvents: "auto",
+                boxShadow: `0 0 0 1px ${color}55`,
+            });
+            remove.onpointerdown = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            };
+            remove.onclick = (event) => {
+                event.stopPropagation();
+                replace(range, "");
+            };
+            tag.append(label, remove);
+            text.appendChild(tag);
+            references.push({ range, tag, background });
+            end = range.end;
+        }
+        text.appendChild(doc.createTextNode(textarea.value.slice(end) + "\u200b"));
+    }
+
+    function sync() {
+        layout();
+        const tags = connectedTags(node);
+        const signature = tags.join(",");
+        if (state.value !== textarea.value || state.tagSignature !== signature) {
+            if (state.value !== textarea.value) state.target = null;
+            state.value = textarea.value;
+            state.tagSignature = signature;
+            decorate(tags);
+            if (state.visible) refresh();
+        }
+        text.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
+        decorations.style.visibility = textarea.selectionStart === textarea.selectionEnd ? "visible" : "hidden";
+        for (const { range, tag, background } of references) {
+            const editing = doc.activeElement === textarea && textarea.selectionStart >= range.start && textarea.selectionStart <= range.end;
+            tag.style.background = editing ? "transparent" : background;
+        }
+        if (state.visible) position();
+    }
 
     function hide() {
         const prefix = prefixAtCaret(textarea);
         state.suppressedPrefix = prefix ? `${prefix.start}:${prefix.end}:${prefix.text}` : "";
         state.visible = false;
+        state.target = null;
         state.key = "";
         popup.style.display = "none";
         textarea.setAttribute("aria-expanded", "false");
@@ -76,16 +222,8 @@ export function mountTagSuggestions(node, widget) {
     }
 
     function position() {
-        const parent = textarea.parentElement;
-        if (!parent || !state.prefix || !state.visible) return;
-        state.parent = parent;
-        if (popup.parentElement !== parent) parent.appendChild(popup);
-        if (mirror.parentElement !== parent) parent.appendChild(mirror);
+        if (!textarea.parentElement || !state.prefix || !state.visible) return;
         const style = getComputedStyle(textarea);
-        for (const name of ["fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "tabSize"]) {
-            mirror.style[name] = style[name];
-        }
-        mirror.style.width = `${textarea.clientWidth}px`;
         mirror.textContent = textarea.value.slice(0, state.prefix.end);
         const marker = doc.createElement("span");
         marker.textContent = "\u200b";
@@ -94,8 +232,8 @@ export function mountTagSuggestions(node, widget) {
         const width = Math.min(180, textarea.clientWidth);
         popup.style.width = `${width}px`;
         popup.style.maxHeight = `${Math.min(160, textarea.clientHeight)}px`;
-        const left = textarea.offsetLeft;
-        const top = textarea.offsetTop;
+        const left = textarea.offsetLeft + textarea.clientLeft;
+        const top = textarea.offsetTop + textarea.clientTop;
         const caretY = marker.offsetTop - textarea.scrollTop;
         const height = popup.offsetHeight;
         const below = caretY + lineHeight;
@@ -121,28 +259,24 @@ export function mountTagSuggestions(node, widget) {
     }
 
     function choose(index) {
-        const prefix = prefixAtCaret(textarea);
+        const prefix = state.target ?? prefixAtCaret(textarea);
         const tag = state.items[index];
         if (!prefix || !tag || !connectedTags(node).includes(tag)) {
             hide();
             return;
         }
-        textarea.setRangeText(tag, prefix.start, prefix.end, "end");
-        textarea.dispatchEvent(new Event("input", { bubbles: true }));
-        textarea.focus();
-        hide();
+        replace(prefix, tag);
     }
 
     function refresh() {
-        if (doc.activeElement !== textarea) {
+        if (doc.activeElement !== textarea || state.composing) {
             hide();
             return;
         }
-        const prefix = prefixAtCaret(textarea);
-        if (prefix && `${prefix.start}:${prefix.end}:${prefix.text}` === state.suppressedPrefix) return;
+        const prefix = state.target ?? prefixAtCaret(textarea);
+        if (!state.target && prefix && `${prefix.start}:${prefix.end}:${prefix.text}` === state.suppressedPrefix) return;
         const tags = connectedTags(node);
-        state.tagSignature = tags.join(",");
-        const items = prefix ? tags.filter((tag) => tag.startsWith(prefix.text.toLowerCase())) : [];
+        const items = prefix ? tags.filter((tag) => state.target ? tag !== prefix.text : tag.startsWith(prefix.text.toLowerCase())) : [];
         if (!prefix || !items.length) {
             hide();
             return;
@@ -190,20 +324,34 @@ export function mountTagSuggestions(node, widget) {
             event.preventDefault();
             event.stopPropagation();
             hide();
+        } else {
+            hide();
         }
     }
 
     function userRefresh() {
+        state.target = null;
         state.suppressedPrefix = "";
+        sync();
         refresh();
     }
-    for (const [type, listener] of [["input", userRefresh], ["click", userRefresh], ["keyup", refresh], ["keydown", keydown], ["scroll", position], ["blur", hide]]) {
+    function compositionStart() {
+        state.composing = true;
+        hide();
+    }
+    function compositionEnd() {
+        state.composing = false;
+        userRefresh();
+    }
+    for (const [type, listener] of [["input", userRefresh], ["click", userRefresh], ["keyup", () => { sync(); refresh(); }], ["keydown", keydown], ["scroll", sync], ["select", sync], ["focus", sync], ["blur", () => { hide(); sync(); }], ["compositionstart", compositionStart], ["compositionend", compositionEnd]]) {
         textarea.addEventListener(type, listener);
         state.listeners.push([type, listener]);
     }
-    state.refresh = refresh;
-    state.position = position;
+    state.sync = sync;
     state.attributes = attributes;
+    state.resizeObserver = new ResizeObserver(sync);
+    state.resizeObserver.observe(textarea);
+    sync();
     refresh();
 }
 
@@ -215,7 +363,10 @@ export function removeTagSuggestions(widget) {
         if (value === null) state.textarea.removeAttribute(name);
         else state.textarea.setAttribute(name, value);
     }
+    state.resizeObserver.disconnect();
+    for (const [name, value] of state.styles) state.textarea.style[name] = value;
     state.popup.remove();
     state.mirror.remove();
+    state.decorations.remove();
     delete widget[suggestionsState];
 }

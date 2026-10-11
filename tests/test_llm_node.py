@@ -110,7 +110,7 @@ class UniversalLLMTests(unittest.TestCase):
         clip.encode_from_tokens_scheduled.assert_called_once_with({"tokens": [1, 2]})
 
     def test_cerebras_only_supported_parameters(self):
-        self.generate("Cerebras", thinking="disabled", top_k=40, min_p=0.1, repetition_penalty=1.1, frequency_penalty=0.2, presence_penalty=0.3, seed=42)
+        self.generate("Cerebras", model="qwen-3.8-27b", thinking="disabled", top_k=40, min_p=0.1, repetition_penalty=1.1, frequency_penalty=0.2, presence_penalty=0.3, seed=42)
         self.assertEqual(self.post.call_args.args[0], "https://api.cerebras.ai/v1/chat/completions")
         body = self.body()
         self.assertEqual(body["reasoning_effort"], "none")
@@ -124,6 +124,100 @@ class UniversalLLMTests(unittest.TestCase):
     def test_cerebras_enabled_default_effort(self):
         self.generate("Cerebras", thinking="enabled")
         self.assertEqual(self.body()["reasoning_effort"], "medium")
+
+    def test_cerebras_gpt_oss_thinking_modes(self):
+        for mode, effort, expected in (("auto", "high", None), ("enabled", "auto", "medium"), ("enabled", "low", "low"), ("enabled", "medium", "medium"), ("enabled", "high", "high"), ("disabled", "high", "low")):
+            with self.subTest(mode=mode, effort=effort):
+                self.generate("Cerebras", model="gpt-oss-120b", thinking=mode, reasoning_effort=effort, max_output_tokens=2048, seed=311826475, stop_sequences="<|im_end|>")
+                body = self.body()
+                self.assertEqual(body.get("reasoning_effort"), expected)
+                self.assertEqual(body.get("reasoning_format"), "hidden" if mode == "disabled" else None)
+                self.assertEqual(body["max_completion_tokens"], 2048)
+                self.assertEqual(body["seed"], 311826475)
+                self.assertEqual(body["stop"], ["<|im_end|>"])
+
+    def test_provider_thinking_matrix(self):
+        cases = (
+            ("OpenRouter", "openai/gpt-oss-120b", "reasoning", None, {"enabled": True, "effort": "low"}, {"enabled": False}),
+            ("Cerebras", "gpt-oss-120b", "reasoning_effort", None, "low", "low"),
+            ("Cerebras", "qwen-3.8-27b", "reasoning_effort", None, "low", "none"),
+            ("Groq", "qwen/qwen3.8-27b", "reasoning_effort", None, "low", "none"),
+            ("Groq", "llama-3.3-70b-versatile", "reasoning_effort", None, None, None),
+            ("LM Studio", "local/model", "reasoning", None, "low", "off"),
+            ("Ollama", "gpt-oss:20b", "think", None, "low", False),
+            ("OpenAI-compatible", "server/model", "reasoning_effort", None, "low", "none"),
+        )
+        for provider, model, field, *expected in cases:
+            for mode, value in zip(("auto", "enabled", "disabled"), expected):
+                with self.subTest(provider=provider, model=model, mode=mode):
+                    self.response.json.return_value = {"output": [{"type": "message", "content": "Answer"}]} if provider == "LM Studio" else {"message": {"content": "Answer"}} if provider == "Ollama" else {"choices": [{"message": {"content": "Answer", "reasoning": "Private"}}]}
+                    self.post.reset_mock()
+                    self.assertEqual(self.generate(provider, model=model, thinking=mode, reasoning_effort="low", base_url="http://localhost:8080/v1" if provider == "OpenAI-compatible" else ""), ("Answer",))
+                    body = self.body()
+                    if value is None:
+                        self.assertNotIn(field, body)
+                    else:
+                        self.assertEqual(body[field], value)
+                    self.assertNotIn("disable_reasoning", body)
+                    self.post.assert_called_once()
+
+    def test_provider_sampling_matrix(self):
+        common = {"temperature": 0.4, "top_p": 0.8}
+        seeded = {**common, "seed": 42, "stop": ["END"]}
+        penalized = {**seeded, "frequency_penalty": 0.2, "presence_penalty": 0.3}
+        cases = (
+            ("OpenRouter", {**penalized, "top_k": 10, "min_p": 0.1, "repetition_penalty": 1.2, "max_completion_tokens": 99}),
+            ("Cerebras", {**penalized, "max_completion_tokens": 99}),
+            ("Groq", {**seeded, "max_completion_tokens": 99}),
+            ("LM Studio", {**common, "top_k": 10, "min_p": 0.1, "repeat_penalty": 1.2, "max_output_tokens": 99, "context_length": 2048}),
+            ("Ollama", {"options": {**seeded, "top_k": 10, "min_p": 0.1, "repeat_penalty": 1.2, "num_predict": 99, "num_ctx": 2048}}),
+            ("OpenAI-compatible", {**penalized, "max_tokens": 99}),
+        )
+        for provider, expected in cases:
+            with self.subTest(provider=provider):
+                self.response.json.return_value = {"output": [{"type": "message", "content": "Answer"}]} if provider == "LM Studio" else {"message": {"content": "Answer"}} if provider == "Ollama" else {"choices": [{"message": {"content": "Answer"}}]}
+                self.generate(provider, temperature=0.4, top_p=0.8, top_k=10, min_p=0.1, repetition_penalty=1.2, frequency_penalty=0.2, presence_penalty=0.3, seed=42, stop_sequences='["END"]', max_output_tokens=99, context_window=2048, base_url="http://localhost:8080/v1" if provider == "OpenAI-compatible" else "")
+                self.assertEqual({name: value for name, value in self.body().items() if name not in ("model", "messages", "input", "system_prompt", "stream", "store")}, expected)
+                self.assertFalse(self.post.call_args.kwargs["allow_redirects"])
+
+    def test_provider_auth_and_failure_matrix(self):
+        for provider, (_, env_name) in node_module.PROVIDERS.items():
+            base = "http://localhost:8080/v1" if provider == "OpenAI-compatible" else ""
+            for status in (400, 401, 403, 404, 429, 500, 302):
+                with self.subTest(provider=provider, status=status), patch.dict(os.environ, {env_name: "matrix-secret"}):
+                    self.response.status_code = status
+                    self.response.json.return_value = {"error": {"message": "Invalid parameter. Bearer matrix-secret"}}
+                    self.post.reset_mock()
+                    with self.assertRaisesRegex(RuntimeError, f"HTTP {status}") as error:
+                        self.generate(provider, api_key="", base_url=base)
+                    self.assertNotIn("matrix-secret", str(error.exception))
+                    self.assertEqual(self.post.call_args.kwargs["headers"]["Authorization"], "Bearer matrix-secret")
+                    self.post.assert_called_once()
+                    self.assertFalse(self.post.call_args.kwargs["allow_redirects"])
+        self.response.status_code = 200
+
+    def test_cerebras_error_is_actionable_bounded_and_redacted(self):
+        self.response.status_code = 400
+        self.response.json.return_value = {"error": {"message": 'reasoning_effort must be low, medium, or high.\nBearer test-secret ' + "x" * 1000}}
+        with self.assertRaises(RuntimeError) as error:
+            self.generate("Cerebras", model="gpt-oss-120b")
+        message = str(error.exception)
+        self.assertIn("reasoning_effort must be low, medium, or high.", message)
+        self.assertIn("[redacted]", message)
+        self.assertNotIn("test-secret", message)
+        self.assertNotIn("\n", message)
+        self.assertLess(len(message), 450)
+
+    def test_cerebras_malformed_errors_keep_http_context(self):
+        self.response.status_code = 400
+        for result in ([], None, {"error": None}, {"error": {"message": ["unexpected"]}}, {"error": {"message": ""}}):
+            with self.subTest(result=result), self.assertRaisesRegex(RuntimeError, "HTTP 400"):
+                self.response.json.return_value = result
+                self.generate("Cerebras")
+        self.response.json.side_effect = requests.exceptions.JSONDecodeError("invalid", "<html>", 0)
+        with self.assertRaisesRegex(RuntimeError, "HTTP 400"):
+            self.generate("Cerebras")
+
 
     def test_groq_preset_supported_sampling_and_key_environment(self):
         with patch.dict(os.environ, {"GROQ_API_KEY": "groq-env-secret"}):

@@ -100,6 +100,11 @@ def _payload(provider, model, prompt_idea, system_prompt, thinking, reasoning_ef
                         body["reasoning_effort"] = "medium" if reasoning_effort == "auto" else reasoning_effort
                     else:
                         body["reasoning_effort"] = "default"
+            elif provider == "Cerebras" and model == "gpt-oss-120b":
+                body["reasoning_effort"] = "low" if thinking == "disabled" else ("medium" if reasoning_effort == "auto" else reasoning_effort)
+                if thinking == "disabled":
+                    body["reasoning_format"] = "hidden"
+
             elif provider == "OpenRouter":
                 body["reasoning"] = {"enabled": thinking == "enabled"}
                 if thinking == "enabled" and reasoning_effort != "auto":
@@ -162,7 +167,7 @@ class UniversalLLM(io.ComfyNode):
                 io.String.Input("api_key", optional=True, default="", tooltip="Direct keys are saved in workflows. Leave blank to use an environment variable; local servers usually need no key."),
                 io.String.Input("api_key_env", optional=True, default="", tooltip="Environment variable name. Blank uses OPENROUTER_API_KEY, CEREBRAS_API_KEY, LM_STUDIO_API_KEY, OLLAMA_API_KEY, OPENAI_API_KEY, or GROQ_API_KEY."),
                 io.String.Input("base_url", optional=True, default="", tooltip="Blank uses the provider default. Custom OpenAI-compatible servers require a URL including the API prefix, e.g. http://localhost:8080/v1. Full endpoint URLs also work."),
-                io.Combo.Input("thinking", optional=True, options=["auto", "enabled", "disabled"], default="auto", tooltip="Auto uses the model default. Requires model support. Groq GPT-OSS always reasons: use auto/enabled, never disabled. Groq Qwen3 supports disabled; unsupported models omit thinking controls."),
+                io.Combo.Input("thinking", optional=True, options=["auto", "enabled", "disabled"], default="auto", tooltip="Auto uses the model default. Requires model support. Cerebras GPT-OSS disabled uses low effort with hidden reasoning; it cannot turn reasoning off. Groq GPT-OSS always reasons: use auto/enabled, never disabled. Groq Qwen3 supports disabled; unsupported models omit thinking controls."),
                 io.Combo.Input("reasoning_effort", optional=True, options=["auto", "low", "medium", "high"], default="auto", tooltip="Used when thinking is enabled. Groq low/medium/high apply to GPT-OSS 20B/120B and Qwen3.8 27B; other Qwen3 models use their default effort."),
                 io.Int.Input("max_output_tokens", optional=True, default=1024, min=1, max=2147483647, tooltip="Generation budget. Reasoning may consume part of this budget."),
                 io.Int.Input("context_window", optional=True, default=0, min=0, max=2147483647, tooltip="LM Studio and Ollama only; 0 uses the server default. Hosted providers control their context limits."),
@@ -237,6 +242,19 @@ class UniversalLLM(io.ComfyNode):
                     429: "Rate limit or quota reached. Wait or check your provider quota.",
                 }
                 hint = "Redirects are not followed. Set base_url to the final API URL." if 300 <= response.status_code < 400 else hints.get(response.status_code, "Check the LLM server and provider status.")
+                if provider == "Cerebras":
+                    try:
+                        error_result = response.json()
+                    except requests.exceptions.JSONDecodeError:
+                        error_result = None
+                    error = error_result.get("error") if isinstance(error_result, dict) else None
+                    detail = error.get("message") if isinstance(error, dict) else error
+                    if isinstance(detail, str) and detail.strip():
+                        detail = " ".join(detail.split())
+                        if key:
+                            detail = detail.replace(key, "[redacted]")
+                        hint = f"{detail[:300]} {hint}"
+
                 raise RuntimeError(f"LLM request failed (HTTP {response.status_code}). {hint}")
             try:
                 result = response.json()
