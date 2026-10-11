@@ -1,5 +1,0 @@
-integrated_multimodal_description: [Shot 1] Live-action, cinematic, a wide establishing shot frames a snowy forest with tall, bare pine trees dusted in fresh powder. The camera holds a static shot as a red fox with bright fur and white-tipped tail strides smoothly across the snow-covered ground, its paws leaving crisp prints behind. The fox moves from left to right, pausing briefly to lift its head and sniff the cold air before continuing its steady gait deeper into the forest, the low winter light casting soft shadows on the snow.
-
-overall_soundscape: The quiet hush of falling snow is punctuated by the soft crunch of the fox's paws on the powdery ground, accompanied by a faint rustle of wind through the pine needles.
-
-non_diegetic_music: N/A
