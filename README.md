@@ -67,6 +67,18 @@ Ready-to-use examples are included in the [workflows](workflows/) folder:
 
 Download a workflow JSON and drag it onto the ComfyUI canvas, or open it through ComfyUI's workflow menu. Select your available model and media files; for API workflows, configure the provider, model ID, endpoint, and credentials as needed. Click **Run** to generate text.
 
+### Local CLIP example
+
+**ComfyUI Local** uses a Qwen3-VL checkpoint loaded through **Load CLIP**, with two reference images and generated text connected to **Text Preview**.
+
+![Local CLIP workflow with two reference images and Text Preview](workflows/local-clip-workflow.png)
+
+### Server API example
+
+**Cerebras** uses an image reference and the **Qwen Image 2.1** prompt guide to generate a character-sheet prompt. Configure your provider and credentials in the Settings node.
+
+![Cerebras server API workflow with an image reference](workflows/server-api-workflow.png)
+
 ## Generator fields
 
 | Field | What it does |
