@@ -146,12 +146,12 @@
       },
       "widgets_values": [
         "Create a character sheet of the person in @image1 in 4 slots showing different angles of the character.",
-        "You are a helpful assistant. Return only the requested text, without commentary.",
+        "You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, wording, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.",
         "Qwen Image 2.1"
       ],
       "widgets_values_named": {
         "prompt_idea": "Create a character sheet of the person in @image1 in 4 slots showing different angles of the character.",
-        "system_prompt": "You are a helpful assistant. Return only the requested text, without commentary.",
+        "system_prompt": "You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, wording, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.",
         "prompt_guide": "Qwen Image 2.1"
       }
     },

@@ -18,7 +18,7 @@ Created by **[ninjaGurung](https://github.com/ninjaGurung)**.
 - **Multimodal inputs:** Dynamic sockets for up to 10 images, 4 videos, and 6 audio inputs. Connecting media reveals another socket; removing it hides extra trailing sockets.
 - **Media tags:** Type `@` to suggest connected attachments, or `@im` to filter images. Tags work in both prompt fields.
 - **Readable output:** A large, read-only preview and a `text` output that connects to any compatible STRING input. All three text areas scroll independently.
-- **Quick copying:** Copy buttons sit beside each text area's title. A checkmark confirms copying for five seconds.
+- **Text controls:** A clear button sits before the copy button beside each text area's title. Clearing Output also clears its saved preview. A checkmark confirms copying for five seconds.
 - **Saved previews and caching:** Generated text is restored with saved workflows. Unchanged runs can reuse a cached result; force regeneration when needed.
 
 ## Installation
@@ -125,6 +125,8 @@ The dropdown shows **📁 MiniMax H3**, **📁 Seedance**, **None**, then the re
 Guides describe the **image/video model you are writing for**, not the LLM generating the text. They do not load those models or generate images/videos. Guides are bundled locally; selecting one makes no extra web request. Explicit user details take precedence over guide examples.
 
 MiniMax H3, Qwen Image 2.1, Wan 3.0, Seedance 2.0 / 2.5, FLUX.2 Klein 9B, and Krea 2 load the full supplied Markdown documents from `prompt_guides/`. The remaining summaries draw on [GPT Image](https://developers.openai.com/api/docs/guides/image-prompting) and [Nano Banana Pro](https://blog.google/products-and-platforms/products/gemini/prompting-tips-nano-banana-pro/).
+
+For Qwen Image 2.1, FLUX.2 Klein 9B, and Krea 2, connected images select I2I / Ref2I and must be named in the finished prompt; no images selects T2I. For Seedance 2.0 / 2.5 and Wan 3.0, any connected media selects Ref2V; no media selects T2V. First/last-frame roles must be specified by the user.
 
 ## Settings fields
 

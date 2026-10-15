@@ -439,6 +439,34 @@ class UniversalLLMTests(unittest.TestCase):
         self.assertIn("FLUX.2 Klein 9B", clip.tokenize.call_args.kwargs["system_prompt"])
         self.assertTrue(clip.tokenize.call_args.kwargs["system_prompt"].startswith("Preserve my wording."))
 
+    def test_image_guides_select_mode_from_connected_images(self):
+        for guide in ("Qwen Image 2.1", "FLUX.2 Klein 9B", "Krea 2"):
+            for references, expected in (((), "T2I"), (("audio1",), "T2I"), (("image1",), "I2I / Ref2I"), (("image2", "image10"), "I2I / Ref2I")):
+                with self.subTest(guide=guide, references=references):
+                    combined = guides_module.combine_system_prompt("Keep the requested four character-sheet panels.", guide, references)
+                    self.assertIn(f"Generation mode for this request: {expected}.", combined)
+                    resolved = combined.split("Generation mode for this request: ", 1)[1]
+                    if expected == "I2I / Ref2I":
+                        self.assertIn("explicitly name the source image", resolved)
+                        self.assertIn("not a standalone description", resolved)
+                    else:
+                        self.assertIn("Do not invent image references", resolved)
+                    self.assertIn("Do not output mode labels, guide headings, or rule explanations", resolved)
+
+    def test_video_guides_select_reference_mode_for_any_connected_media(self):
+        for guide in ("Seedance 2.0", "Seedance 2.5", "Wan 3.0"):
+            for references, expected in (((), "T2V"), (("image1",), "Ref2V"), (("image1", "image2"), "Ref2V"), (("video1",), "Ref2V"), (("audio1",), "Ref2V"), (("image2", "video1", "audio1"), "Ref2V")):
+                with self.subTest(guide=guide, references=references):
+                    combined = guides_module.combine_system_prompt("Keep the requested action.", guide, references)
+                    self.assertIn(f"Generation mode for this request: {expected}.", combined)
+                    resolved = combined.split("Generation mode for this request: ", 1)[1]
+                    if references:
+                        self.assertIn("explicit reference tags", resolved)
+                        self.assertIn("only when the user explicitly assigns first/last-frame roles", resolved)
+                    else:
+                        self.assertIn("Do not invent media references", resolved)
+                    self.assertIn("Do not output mode labels, guide headings, or rule explanations", resolved)
+
     def test_errors_do_not_become_prompt_text(self):
         for status, hint in ((400, "settings"), (401, "API key"), (403, "permissions"), (404, "base_url"), (429, "quota"), (500, "server"), (307, "Redirects")):
             with self.subTest(status=status):

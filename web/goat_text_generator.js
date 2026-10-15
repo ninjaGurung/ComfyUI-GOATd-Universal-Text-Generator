@@ -9,6 +9,7 @@ const generatorTypes = new Set(["GOATUniversalTextGenerator", "UniversalLLM"]);
 const previewName = "generated_text";
 const inputOrderPending = Symbol("goatInputOrderPending");
 const copyControl = Symbol("goatCopyControl");
+const clearControl = Symbol("goatClearControl");
 const titleControl = Symbol("goatTitleControl");
 const headerControl = Symbol("goatHeaderControl");
 const copyResetTimer = Symbol("goatCopyResetTimer");
@@ -75,7 +76,7 @@ function scheduleInputOrder(node) {
     });
 }
 
-function mountCopyButton(widget) {
+function mountTextButtons(node, widget) {
     const textarea = widget.element;
     const parent = textarea?.parentElement;
     if (!parent) return;
@@ -136,6 +137,35 @@ function mountCopyButton(widget) {
         };
         widget[copyControl] = button;
     }
+    let clear = widget[clearControl];
+    if (!clear) {
+        clear = document.createElement("button");
+        clear.type = "button";
+        clear.textContent = "×";
+        const label = `Clear ${areaTitles[widget.name]}`;
+        clear.title = label;
+        clear.setAttribute("aria-label", label);
+        clear.style.cssText = button.style.cssText;
+        Object.assign(clear.style, { marginLeft: "auto", marginRight: "4px" });
+        clear.onpointerdown = (event) => event.stopPropagation();
+        clear.onclick = (event) => {
+            event.stopPropagation();
+            widget.value = "";
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+            if (widget.name === previewName) {
+                node.properties ??= {};
+                node.properties.goat_generated_text = "";
+            }
+            clearTimeout(widget[copyResetTimer]);
+            widget[copyResetTimer] = null;
+            button.textContent = "⧉";
+            button.title = `Copy ${widget.name.replaceAll("_", " ")}`;
+            textarea.focus();
+            node.setDirtyCanvas(true, true);
+        };
+        widget[clearControl] = clear;
+    }
+    if (clear.parentElement !== header) header.appendChild(clear);
     if (button.parentElement !== header) header.appendChild(button);
     if (header.parentElement !== parent) {
         if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
@@ -238,7 +268,7 @@ app.registerExtension({
         nodeType.prototype.onDrawForeground = function () {
             const result = onDrawForeground?.apply(this, arguments);
             for (const widget of this.widgets ?? []) {
-                if (["prompt_idea", "system_prompt", previewName].includes(widget.name)) mountCopyButton(widget);
+                if (["prompt_idea", "system_prompt", previewName].includes(widget.name)) mountTextButtons(this, widget);
                 if (["prompt_idea", "system_prompt"].includes(widget.name)) mountTagSuggestions(this, widget);
             }
             return result;
@@ -253,6 +283,7 @@ app.registerExtension({
                 clearTimeout(widget[copyResetTimer]);
                 widget[copyResetTimer] = null;
                 widget[copyControl]?.remove();
+                widget[clearControl]?.remove();
                 widget[titleControl]?.remove();
                 widget[headerControl]?.remove();
             }

@@ -63,9 +63,36 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=()):
     )
     if not reference_names and guide_name in ("MiniMax H3 - T2V / FL2V", "MiniMax H3 - Ref2V"):
         references += " Use text-only T2VA: begin with integrated_multimodal_description, then overall_soundscape and non_diegetic_music. Omit the image-alignment instruction."
+    mode = ""
+    if guide_name in ("Qwen Image 2.1", "FLUX.2 Klein 9B", "Krea 2"):
+        if any(name.startswith("image") for name in reference_names):
+            mode = (
+                "I2I / Ref2I. Connected images are source references, even if the idea says create or does not name a tag. "
+                "Follow the guide's editing/reference rules and explicitly name the source image in the finished prompt using the guide's reference syntax. "
+                "Write a generation or transformation instruction, not a standalone description of the reference. "
+                "State what each image contributes and what must remain consistent. For a character sheet, explicitly derive every requested view from the source person's identity; "
+                "preserve the requested panel count and angles rather than locking the source composition."
+            )
+        else:
+            mode = "T2I. No images are connected. Follow the guide's text-to-image rules. Do not invent image references or editing sources."
+    elif guide_name in ("Seedance 2.0", "Seedance 2.5", "Wan 3.0"):
+        if reference_names:
+            mode = (
+                "Ref2V. Connected images, videos, or audio are source references. Include their explicit reference tags and roles in the finished video prompt "
+                "using the guide's syntax, then describe the requested action, camera movement, and sound rather than merely captioning the media. "
+                "Use I2V or FLF2V only when the user explicitly assigns first/last-frame roles; never infer those roles from attachment count. "
+                "Use editing or extension rules when the user requests editing or continuing a supplied video."
+            )
+        else:
+            mode = "T2V. No media are connected. Follow the guide's text-to-video rules. Do not invent media references or first/last-frame anchors."
+    if mode:
+        mode = (
+            f"\nGeneration mode for this request: {mode} "
+            "Return only the finished generation prompt. Do not output mode labels, guide headings, or rule explanations.\n"
+        )
     return (
         f"{system_prompt}\n\nSelected prompt writing guide: {guide_name}\n{guide}\n\n"
-        f"{references}\n"
+        f"{references}\n{mode}"
         "Apply this guide together with the user's system instructions and prompt idea. "
         "Preserve explicitly supplied details, names, wording, and reference associations. "
         "When guide examples or defaults conflict with explicit user instructions, follow the user instructions. "
