@@ -124,7 +124,7 @@ The dropdown shows **📁 MiniMax H3**, **📁 Seedance**, **None**, then the re
 
 Guides describe the **image/video model you are writing for**, not the LLM generating the text. They do not load those models or generate images/videos. Guides are bundled locally; selecting one makes no extra web request. Explicit user details take precedence over guide examples.
 
-MiniMax guides use the supplied documents. Other guides draw on these references: [GPT Image](https://developers.openai.com/api/docs/guides/image-prompting), [Qwen Image](https://qwen.ai/blog?id=qwen-image-2.1), [FLUX.2 Klein](https://help.bfl.ai/articles/7592221790-how-do-i-generate-quickly-with-flux-2-klein), [Krea 2](https://github.com/krea-ai/krea-2/blob/main/docs/prompting.md), [Seedance 2.0](https://seed.bytedance.com/en/seedance2_0), [Seedance 2.5](https://seed.bytedance.com/en/blog/one-take-creation-flexible-referencing-introducing-seedance-2-5), [Nano Banana Pro](https://blog.google/products-and-platforms/products/gemini/prompting-tips-nano-banana-pro/), and [Wan 3.0](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/wan3-video-generation-guide).
+MiniMax H3, Qwen Image 2.1, Wan 3.0, Seedance 2.0 / 2.5, FLUX.2 Klein 9B, and Krea 2 load the full supplied Markdown documents from `prompt_guides/`. The remaining summaries draw on [GPT Image](https://developers.openai.com/api/docs/guides/image-prompting) and [Nano Banana Pro](https://blog.google/products-and-platforms/products/gemini/prompting-tips-nano-banana-pro/).
 
 ## Settings fields
 
