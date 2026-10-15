@@ -270,12 +270,17 @@ PROMPT_INPUTS = {"prompt_idea", "system_prompt", "images", "videos", "audios", "
 class GOATTextGeneratorSettings(io.ComfyNode):
     @classmethod
     def define_schema(cls):
+        fields = [field for field in UniversalLLM.define_schema().inputs if field.id not in PROMPT_INPUTS]
+        defaults = {"provider": "ComfyUI Local", "thinking": "disabled", "top_p": 0.95, "top_k": 40, "min_p": 0.05, "repetition_penalty": 1.1}
+        for field in fields:
+            if field.id in defaults:
+                field.default = defaults[field.id]
         return io.Schema(
             node_id="GOATTextGeneratorSettings",
             display_name="GOAT'd Text Generator Settings 🐐",
             category="LLM/GOAT'd",
             description="Provider, model, and generation settings for the GOAT'd Text Generator.",
-            inputs=[field for field in UniversalLLM.define_schema().inputs if field.id not in PROMPT_INPUTS],
+            inputs=fields,
             outputs=[TEXT_SETTINGS.Output("settings")],
         )
 

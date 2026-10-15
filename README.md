@@ -132,22 +132,24 @@ For Qwen Image 2.1, FLUX.2 Klein 9B, and Krea 2, connected images select I2I / R
 
 Settings only take effect where the selected provider and model support them. Unsupported provider-specific fields are omitted. For sampling fields, **-1 uses provider/native defaults**.
 
+New Settings nodes start in **ComfyUI Local** mode with the defaults below. Every field remains editable. Switching providers preserves current values; loading a saved workflow restores its saved values.
+
 | Field | Default | Simple explanation |
 | --- | --- | --- |
-| **provider** | OpenRouter | Where the LLM runs. Choose a cloud service, local server, or ComfyUI Local. |
+| **provider** | ComfyUI Local | Where the LLM runs. Choose a cloud service, local server, or ComfyUI Local. |
 | **model** | Empty | Exact model ID from the selected provider/server. Ignored for ComfyUI Local. |
 | **api_key** | Empty | Your provider's API key. Overrides the environment-variable value. Local servers usually need no key. |
 | **api_key_env** | Empty | Name of an environment variable containing the key. Empty uses the provider's default variable below. |
 | **base_url** | Empty | Custom server/API address. Empty uses the provider default. Required for OpenAI-compatible servers. Full endpoint URLs also work. |
-| **thinking** | auto | Use the model's default reasoning behavior, enable it, or disable it when supported. |
+| **thinking** | disabled | Use the model's default reasoning behavior, enable it, or disable it when supported. |
 | **reasoning_effort** | auto | Request low, medium, or high reasoning effort when thinking is enabled. Support varies by model. |
 | **max_output_tokens** | 1024 | Maximum generation budget. Reasoning may use part of this budget. |
 | **context_window** | 0 | Context size for LM Studio/Ollama. **0** uses the server default. Hosted and ComfyUI Local context limits are managed elsewhere. |
 | **temperature** | 0.7 | Higher gives more varied results; lower is more focused. **0** uses greedy decoding locally. |
-| **top_p** | -1 | Samples from the smallest token pool reaching this probability. Lower values narrow the choices. |
-| **top_k** | -1 | Limits sampling to the most likely K tokens. Used by OpenRouter, LM Studio, Ollama, and ComfyUI Local. |
-| **min_p** | -1 | Filters out tokens that are unlikely relative to the best token. Same provider support as top_k. |
-| **repetition_penalty** | -1 | Discourages repeated text. **1** is neutral; higher values discourage repetition. Same provider support as top_k. |
+| **top_p** | 0.95 | Samples from the smallest token pool reaching this probability. Lower values narrow the choices. |
+| **top_k** | 40 | Limits sampling to the most likely K tokens. Used by OpenRouter, LM Studio, Ollama, and ComfyUI Local. |
+| **min_p** | 0.05 | Filters out tokens that are unlikely relative to the best token. Same provider support as top_k. |
+| **repetition_penalty** | 1.1 | Discourages repeated text. **1** is neutral; higher values discourage repetition. Same provider support as top_k. |
 | **frequency_penalty** | 0 | Positive values discourage frequently repeated tokens. Used by OpenRouter, Cerebras, and OpenAI-compatible servers. |
 | **presence_penalty** | 0 | Positive values encourage new topics/tokens. Used by OpenRouter, Cerebras, OpenAI-compatible servers, and ComfyUI Local. |
 | **seed** | -1 | A nonnegative value requests repeatable sampling where supported. **-1** leaves it unset remotely or chooses a random local seed. Not exposed by LM Studio's native API. |

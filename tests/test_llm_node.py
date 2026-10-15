@@ -426,6 +426,20 @@ class UniversalLLMTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "incomplete"):
             Generator.execute("A cabin", "", "None", {"provider": "ComfyUI Local"})
 
+    def test_settings_creation_defaults_and_manual_values(self):
+        defaults = {field.id: field.default for field in Settings.define_schema().inputs}
+        preset = {"provider": "ComfyUI Local", "thinking": "disabled", "temperature": 0.7, "top_p": 0.95, "top_k": 40, "min_p": 0.05, "repetition_penalty": 1.1}
+        self.assertEqual({name: defaults[name] for name in preset}, preset)
+        values = {**defaults, "thinking": "enabled", "temperature": 0.4, "top_p": 0.8, "top_k": 12, "min_p": 0.02, "repetition_penalty": 1.0}
+        for provider in ("ComfyUI Local", "OpenRouter", "Ollama", "ComfyUI Local"):
+            values["provider"] = provider
+            self.assertEqual(Settings.execute(**values)[0], values)
+        legacy = {field.id: field.default for field in UniversalLLM.define_schema().inputs if field.id in ("provider", "top_p")}
+        self.assertEqual(legacy["provider"], "OpenRouter")
+        self.assertEqual(legacy["top_p"], -1.0)
+        saved = {**defaults, "thinking": "auto", "top_p": -1.0, "top_k": -1, "min_p": -1.0, "repetition_penalty": -1.0}
+        self.assertEqual(Settings.execute(**saved)[0], saved)
+
     def test_guides_preserve_instructions_and_ref2v_dependency(self):
         self.assertEqual(guides_module.combine_system_prompt("Keep this exact.\n", "None"), "Keep this exact.\n")
         combined = guides_module.combine_system_prompt("Keep original dialogue.", "MiniMax H3 - Ref2V")
