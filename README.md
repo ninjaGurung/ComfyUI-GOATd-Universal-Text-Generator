@@ -12,7 +12,7 @@ Created by **[ninjaGurung](https://github.com/ninjaGurung)**.
 
 ## Features
 
-- **Cloud and local models:** OpenRouter, Cerebras, Groq, LM Studio, Ollama, OpenAI-compatible servers, and generation-capable models loaded directly in ComfyUI.
+- **Cloud and local models:** OpenRouter, OpenCode, Cerebras, Groq, LM Studio, Ollama, OpenAI-compatible servers, and generation-capable models loaded directly in ComfyUI.
 - **Two separate nodes:** Keep your writing area clean while managing model settings in a connected Settings node.
 - **Prompt guides:** Add model-specific writing instructions to your system prompt.
 - **Multimodal inputs:** Dynamic sockets for up to 10 images, 4 videos, and 6 audio inputs. Connecting media reveals another socket; removing it hides extra trailing sockets.
@@ -138,7 +138,7 @@ New Settings nodes start in **ComfyUI Local** mode with the defaults below. Ever
 | --- | --- | --- |
 | **provider** | ComfyUI Local | Where the LLM runs. Choose a cloud service, local server, or ComfyUI Local. |
 | **model** | Empty | Exact model ID from the selected provider/server. Ignored for ComfyUI Local. |
-| **api_key** | Empty | Your provider's API key. Overrides the environment-variable value. Local servers usually need no key. |
+| **api_key** | Empty | Your provider's API key. OpenCode uses the service account's API key. Overrides the environment-variable value; Bearer authentication is added automatically. |
 | **api_key_env** | Empty | Name of an environment variable containing the key. Empty uses the provider's default variable below. |
 | **base_url** | Empty | Custom server/API address. Empty uses the provider default. Required for OpenAI-compatible servers. Full endpoint URLs also work. |
 | **thinking** | disabled | Use the model's default reasoning behavior, enable it, or disable it when supported. |
@@ -167,6 +167,7 @@ Some reasoning models reject custom temperature/top_p; use **-1** for their defa
 | Provider | Default address | Default key environment variable |
 | --- | --- | --- |
 | OpenRouter | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` |
+| OpenCode | `https://opencode.ai/inference/openai/v1` | `OPENCODE_API_KEY` |
 | Cerebras | `https://api.cerebras.ai/v1` | `CEREBRAS_API_KEY` |
 | Groq | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` |
 | LM Studio | `http://127.0.0.1:1234` | `LM_STUDIO_API_KEY` |
@@ -178,6 +179,26 @@ Start LM Studio/Ollama and make your model available before running. LM Studio u
 
 Use your provider's exact model ID. For GPT-OSS, Cerebras uses `gpt-oss-120b`; Groq uses `openai/gpt-oss-120b`. GPT-OSS is a text model and always reasons: use **auto** or **enabled**.
 
+### OpenCode setup
+
+Choose **OpenCode**, leave **base_url** blank, and enter an accessible Chat Completions model ID such as `kimi-k2.6`, without an `opencode/` prefix. The full URL `https://opencode.ai/inference/openai/v1/chat/completions` also works.
+
+In the [OpenCode Console](https://opencode.ai/console), open **Keys**, create/open a service account, and create a key with **Inference only** permission. Put the **service account key** (`oc_sk_...`) in the node's generically named **api_key** field, or set `OPENCODE_API_KEY` before starting ComfyUI. If you have both a service account key and another OpenCode API key, use the service account key for this endpoint. No second credential, workspace header, or Bearer field is required. The node adds `Authorization: Bearer <key>` and also accepts a pasted `Bearer <key>` value. Paid models need model access and available budget.
+
+On October 17, 2026, a direct request to `deepseek-v4.1-flash-free` without credentials returned HTTP 403 `FreeTierError`: OpenCode's free tier can only be used from within OpenCode. Although the inference docs describe unauthenticated free chat requests, free-tier availability from this node is subject to OpenCode's server restrictions. An extra credential field does not resolve that response; use an accessible paid model, or use the free model within OpenCode.
+
+This preset supports **OpenAI Chat Completions** and uses model-default thinking. OpenCode's GPT models use Responses, Claude/Qwen use Anthropic Messages, and Gemini uses generateContent; those API formats are not supported by this preset or the generic OpenAI-compatible path. Check the [model endpoints](https://opencode.ai/v2/docs/console/models/) and [inference documentation](https://opencode.ai/v2/docs/console/api/inference/) before choosing a model.
+
+### OpenRouter setup
+
+Choose **OpenRouter**, leave **base_url** blank, and use the exact model ID from [OpenRouter Models](https://openrouter.ai/models), including its provider prefix and any `:free` suffix. Enter an [OpenRouter API key](https://openrouter.ai/settings/keys) in **api_key**, or set `OPENROUTER_API_KEY` before starting ComfyUI. A model vendor's own API key cannot authenticate to OpenRouter. No second credential or extra header is required; attribution headers are optional.
+
+For a first connection test, use **thinking = auto**, **temperature = -1**, **top_p = -1**, **top_k = -1**, **min_p = -1**, **repetition_penalty = -1**, and no attachments. Enable **force_regenerate** for a fresh request. The node now includes the provider's bounded JSON error message with the submitted key redacted, including errors returned inside HTTP 200 responses. Check credits/key spending limits for HTTP 402; for HTTP 403, follow the provider message about permissions, model access, budgets, or guardrails. See [OpenRouter authentication](https://openrouter.ai/docs/api/reference/authentication) and [errors](https://openrouter.ai/docs/api/reference/errors-and-debugging).
+
+**Free-model 429:** This can come from shared upstream capacity even on your first request. OpenRouter currently advertises 20 requests/minute and 50/day across free models, increasing to 1,000/day after at least $10 in lifetime credit purchases. Failed requests can consume the daily allowance. Check [Activity](https://openrouter.ai/activity) and the authenticated `GET https://openrouter.ai/api/v1/key` response's `free_model_daily_requests` for your actual remaining allowance. Buying credits raises the daily cap; it does not guarantee free-provider capacity. See [limits](https://openrouter.ai/docs/api/reference/limits) and [pricing](https://openrouter.ai/pricing).
+
+**Free-model 404:** A listed model can have no eligible provider at request time because of availability, account routing/privacy restrictions, or unsupported attachments. Check the model page's providers and [Privacy settings](https://openrouter.ai/settings/privacy), following the actual error message. A text-only test helps isolate attachment restrictions. The node includes upstream `error.metadata.raw` details and numeric `Retry-After` hints for 429 responses, with no automatic retries. If you still see only the old generic error, restart ComfyUI to load the updated Python code and run once again.
+
 **Key privacy:** Direct API keys are saved in ComfyUI workflows/history. Use environment variables when sharing workflows. The node sends your prompt and connected media to the selected endpoint. It adds no telemetry, background discovery, model downloads, or automatic request retries. Changing an environment key alone does not clear cached output; enable force_regenerate when needed.
 
 ## Image, video, and audio support
@@ -187,6 +208,7 @@ The provider **and** chosen model must support your media. A chat-compatible end
 | Provider | Images | Video | Audio inputs |
 | --- | --- | --- | --- |
 | OpenRouter | Yes, with a vision model | Native video or sampled frames | Yes, with an audio model |
+| OpenCode | With a vision-capable Chat Completions model | Sampled frames | No on this node's API path |
 | Cerebras | With a vision model | Sampled frames | No |
 | Groq | With a vision model | Sampled frames | No |
 | LM Studio | With a vision model | Sampled frames | No on this node's API path |

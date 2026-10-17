@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 import comfy.audio
 
-from .media import _connected, _TAG
+from .media import _connected, _TAG, _video_frames
 from .stop_sequences import parse_stop_sequences
 
 
@@ -35,25 +35,8 @@ def _media(prompt, system_prompt, images, videos, audios, video_mode, video_fram
             frames.append(frame)
             labels.append(f"@{name}" if image.shape[0] == 1 else f"@{name} image {index + 1}/{image.shape[0]}")
     for name, video in videos.items():
-        duration = video.get_duration()
-        rate = float(video.get_frame_rate())
-        if duration <= 0 or rate <= 0:
-            raise ValueError(f"@{name} has no readable frames.")
-        video = video.as_trimmed(0.0, duration, strict_duration=False)
-        if video is None:
-            raise ValueError(f"@{name} has no readable frames.")
-        count = video_frame_count or 12
-        interval = 1 / rate
-        last_time = max(0.0, duration - interval)
-        for index in range(count):
-            timestamp = last_time * index / (count - 1) if count > 1 else 0.0
-            segment = video.as_trimmed(timestamp, min(interval, duration - timestamp), strict_duration=False)
-            if segment is None:
-                raise ValueError(f"Could not read @{name} frame at {timestamp:.3f}s.")
-            batch = segment.get_components().images
-            if batch.shape[0] == 0:
-                raise ValueError(f"Could not read @{name} frame at {timestamp:.3f}s.")
-            frames.append(batch[0])
+        for timestamp, frame in _video_frames(video, video_frame_count or 12):
+            frames.append(frame)
             labels.append(f"@{name} frame at {timestamp:.3f}s (visual frames only)")
 
     image_batch = None

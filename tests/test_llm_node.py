@@ -109,6 +109,94 @@ class UniversalLLMTests(unittest.TestCase):
         clip.tokenize.assert_called_once_with("A cinematic cabin.")
         clip.encode_from_tokens_scheduled.assert_called_once_with({"tokens": [1, 2]})
 
+    def test_opencode_preset_and_service_account_key(self):
+        with patch.dict(os.environ, {"OPENCODE_API_KEY": "oc_sk_service-secret"}):
+            self.assertEqual(self.generate("OpenCode", model="deepseek-v4.1-flash-free", thinking="auto"), ("A cinematic cabin.",))
+        self.assertEqual(self.post.call_args.args[0], "https://opencode.ai/inference/openai/v1/chat/completions")
+        self.assertEqual(self.post.call_args.kwargs["headers"]["Authorization"], "Bearer oc_sk_service-secret")
+        self.assertEqual(self.body()["max_tokens"], 1024)
+        self.assertNotIn("max_completion_tokens", self.body())
+        self.assertNotIn("reasoning_effort", self.body())
+        self.generate("OpenCode", thinking="disabled")
+        self.assertNotIn("reasoning_effort", self.body())
+        self.generate("OpenCode", model="deepseek-v4.1-flash-free", api_key="", base_url="https://opencode.ai/inference/openai/v1/chat/completions")
+        self.assertNotIn("Authorization", self.post.call_args.kwargs["headers"])
+        self.assertEqual(self.post.call_args.args[0], "https://opencode.ai/inference/openai/v1/chat/completions")
+
+    def test_bearer_prefix_is_not_duplicated(self):
+        for provider, base in (("OpenRouter", ""), ("OpenCode", ""), ("OpenAI-compatible", "https://example.test/v1")):
+            with self.subTest(provider=provider):
+                self.generate(provider, base_url=base, api_key="  Bearer pasted-secret  ")
+                self.assertEqual(self.post.call_args.kwargs["headers"]["Authorization"], "Bearer pasted-secret")
+
+    def test_provider_error_details_are_redacted(self):
+        for provider, detail in (("OpenRouter", "Budget limit exceeded"), ("OpenCode", "Wrong workspace"), ("OpenAI-compatible", "Model access denied")):
+            with self.subTest(provider=provider):
+                self.response.status_code = 403
+                self.response.json.return_value = {"error": {"message": detail + "\nBearer diagnostic-secret " + "x" * 1000}}
+                with self.assertRaises(RuntimeError) as caught:
+                    self.generate(provider, api_key="diagnostic-secret", base_url="https://example.test/v1")
+                message = str(caught.exception)
+                self.assertIn(detail, message)
+                self.assertIn("HTTP 403", message)
+                self.assertIn("[redacted]", message)
+                self.assertNotIn("diagnostic-secret", message)
+                self.assertNotIn("\n", message)
+                self.assertLess(len(message), 450)
+
+    def test_opencode_error_formats(self):
+        self.response.status_code = 403
+        for result, message in (({"_tag": "Forbidden"}, "Forbidden"), ({"type": "error", "error": {"type": "FreeTierError", "message": "OpenCode's free tier can only be used from within OpenCode."}}, "free tier can only be used from within OpenCode")):
+            with self.subTest(result=result):
+                self.response.json.return_value = result
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.generate("OpenCode")
+
+    def test_openrouter_error_in_success_response(self):
+        self.response.json.return_value = {"error": {"code": 403, "message": "Budget limit exceeded. test-secret"}}
+        with self.assertRaisesRegex(RuntimeError, "Budget limit exceeded") as caught:
+            self.generate()
+        self.assertNotIn("test-secret", str(caught.exception))
+
+    def test_openrouter_upstream_error_details(self):
+        for status, detail in ((429, "Model is temporarily rate-limited upstream"), (404, "No endpoints found matching your data policy"), (200, "Provider is unavailable")):
+            with self.subTest(status=status):
+                self.response.status_code = status
+                self.response.json.return_value = {"error": {"message": "Provider returned error", "metadata": {"raw": detail + "\nBearer test-secret " + "x" * 1000}}}
+                with self.assertRaises(RuntimeError) as caught:
+                    self.generate()
+                message = str(caught.exception)
+                self.assertIn("Provider returned error", message)
+                self.assertIn(detail, message)
+                self.assertIn("[redacted]", message)
+                self.assertNotIn("test-secret", message)
+                self.assertNotIn("\n", message)
+                self.assertLess(len(message), 500)
+
+    def test_openrouter_retry_delay_without_automatic_retries(self):
+        self.response.status_code = 429
+        self.response.json.return_value = {"error": {"message": "Rate limit exceeded"}}
+        self.response.headers = {"Retry-After": "60"}
+        with self.assertRaisesRegex(RuntimeError, "Retry after 60 seconds"):
+            self.generate()
+        self.post.assert_called_once()
+
+    def test_malformed_upstream_error_metadata(self):
+        self.response.status_code = 429
+        for metadata in (None, [], {"raw": None}, {"raw": {}}, {"raw": ""}):
+            with self.subTest(metadata=metadata):
+                self.response.json.return_value = {"error": {"message": "Rate limit exceeded", "metadata": metadata}}
+                with self.assertRaisesRegex(RuntimeError, "Rate limit exceeded"):
+                    self.generate()
+
+    def test_opencode_images_and_video_frames(self):
+        self.generate("OpenCode", images={"image1": torch.zeros(1, 2, 2, 3)}, videos={"video1": self.make_video()}, video_frame_count=2)
+        parts = self.body()["messages"][-1]["content"]
+        self.assertEqual(sum(part["type"] == "image_url" for part in parts), 3)
+        self.assertFalse(any(part["type"] == "video_url" for part in parts))
+        with self.assertRaisesRegex(ValueError, "does not accept audio"):
+            self.generate("OpenCode", audios={"audio1": {"waveform": torch.zeros(1, 1, 8), "sample_rate": 16000}})
+
     def test_cerebras_only_supported_parameters(self):
         self.generate("Cerebras", model="qwen-3.8-27b", thinking="disabled", top_k=40, min_p=0.1, repetition_penalty=1.1, frequency_penalty=0.2, presence_penalty=0.3, seed=42)
         self.assertEqual(self.post.call_args.args[0], "https://api.cerebras.ai/v1/chat/completions")
@@ -488,7 +576,7 @@ class UniversalLLMTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, hint) as caught:
                     self.generate()
                 self.assertNotIn("test-secret", str(caught.exception))
-        self.response.json.assert_not_called()
+        self.assertEqual(self.response.json.call_count, 7)
 
     def test_timeout_and_connection_errors(self):
         for error, message in ((requests.exceptions.Timeout("test-secret"), "timed out"), (requests.exceptions.ConnectionError("test-secret"), "Could not reach")):
@@ -681,6 +769,40 @@ class UniversalLLMTests(unittest.TestCase):
         parts = self.body()["messages"][-1]["content"]
         self.assertEqual(sum(part["type"] == "image_url" for part in parts), 1)
         self.assertNotIn("video_url", [part["type"] for part in parts])
+
+    def test_video_sampling_uses_decodable_timestamps(self):
+        buffer = BytesIO()
+        with av.open(buffer, "w", format="mp4") as output:
+            stream = output.add_stream("libx264", rate=50)
+            stream.options = {"bf": "0"}
+            stream.width = stream.height = 32
+            stream.pix_fmt = "yuv420p"
+            for index in (0, 1, 2, 6, 7):
+                frame = av.VideoFrame.from_ndarray(torch.full((32, 32, 3), index * 30, dtype=torch.uint8).numpy(), format="rgb24")
+                frame.pts = index
+                frame.time_base = Fraction(1, 50)
+                for packet in stream.encode(frame):
+                    packet.duration = 3
+                    output.mux(packet)
+            for packet in stream.encode():
+                packet.duration = 3
+                output.mux(packet)
+        video = InputImpl.VideoFromFile(buffer)
+        for provider in ("OpenRouter", "ComfyUI Local"):
+            for count in (1, 2, 12):
+                with self.subTest(provider=provider, count=count):
+                    clip = self.local_clip("gemma4")
+                    self.generate(provider, clip=clip, videos={"video1": video}, video_mode="frames", video_frame_count=count)
+                    if provider == "ComfyUI Local":
+                        prompt = clip.tokenize.call_args.args[0]
+                        self.assertEqual(clip.tokenize.call_args.kwargs["image"].shape, (count, 32, 32, 3))
+                    else:
+                        parts = self.body()["messages"][-1]["content"]
+                        prompt = "\n".join(part["text"] for part in parts if part["type"] == "text")
+                        self.assertEqual(sum(part["type"] == "image_url" for part in parts), count)
+                    self.assertIn("frame at 0.000s", prompt)
+                    if count > 1:
+                        self.assertIn("frame at 0.140s", prompt)
 
     def test_video_sampling_materializes_source_at_most_once(self):
         video = self.make_video()

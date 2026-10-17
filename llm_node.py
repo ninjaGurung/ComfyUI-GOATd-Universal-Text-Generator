@@ -21,6 +21,7 @@ PROVIDERS = {
     "Ollama": ("http://127.0.0.1:11434", "OLLAMA_API_KEY"),
     "OpenAI-compatible": ("", "OPENAI_API_KEY"),
     "Groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
+    "OpenCode": ("https://opencode.ai/inference/openai/v1", "OPENCODE_API_KEY"),
 }
 
 
@@ -86,8 +87,8 @@ def _payload(provider, model, prompt_idea, system_prompt, thinking, reasoning_ef
             body["think"] = False if thinking == "disabled" else (True if reasoning_effort == "auto" else reasoning_effort)
     else:
         body.update(sampling)
-        body["max_tokens" if provider == "OpenAI-compatible" else "max_completion_tokens"] = max_output_tokens
-        if thinking != "auto":
+        body["max_tokens" if provider in ("OpenAI-compatible", "OpenCode") else "max_completion_tokens"] = max_output_tokens
+        if thinking != "auto" and provider != "OpenCode":
             if provider == "Groq":
                 if model in ("openai/gpt-oss-20b", "openai/gpt-oss-120b"):
                     if thinking == "disabled":
@@ -119,11 +120,28 @@ def _payload(provider, model, prompt_idea, system_prompt, thinking, reasoning_ef
     return body
 
 
+def _error_detail(result, key):
+    if not isinstance(result, dict):
+        return ""
+    error = result.get("error")
+    detail = error.get("message") if isinstance(error, dict) else error
+    if not isinstance(detail, str) or not detail.strip():
+        detail = result.get("message") or result.get("_tag")
+    if not isinstance(detail, str):
+        detail = ""
+    if isinstance(error, dict):
+        metadata = error.get("metadata")
+        raw = metadata.get("raw") if isinstance(metadata, dict) else None
+        if isinstance(raw, str) and raw.strip():
+            detail = f"{detail} {raw}"
+    if key:
+        detail = detail.replace(key, "[redacted]")
+    return " ".join(detail.split())[:300]
+
+
 def _answer(provider, result):
     if not isinstance(result, dict):
         raise RuntimeError("LLM server returned an invalid response object.")
-    if "error" in result:
-        raise RuntimeError("LLM server reported an error. Check the model, credentials, and settings.")
     try:
         if provider == "LM Studio":
             content = "\n".join(item["content"] for item in result["output"] if item["type"] == "message")
@@ -158,16 +176,16 @@ class UniversalLLM(io.ComfyNode):
             is_output_node=False,
             category="LLM",
             description="Generate text with hosted or local LLMs. Reference connected media with @image1, @video1, or @audio1. Connect text to a STRING input, including CLIP Text Encode.",
-            search_aliases=["openrouter", "cerebras", "ollama", "lm studio", "language model"],
+            search_aliases=["openrouter", "opencode", "cerebras", "ollama", "lm studio", "language model"],
             inputs=[
                 io.Combo.Input("provider", options=[*PROVIDERS, "ComfyUI Local"], default="OpenRouter"),
                 io.String.Input("model", default="", tooltip="Model ID from your provider or local server. ComfyUI Local uses the connected CLIP model instead. Media inputs require a compatible multimodal model."),
                 io.String.Input("prompt_idea", multiline=True, default="", dynamic_prompts=False, tooltip="Reference attachments by socket name: @image1, @video1, @audio1. All connected media are sent."),
                 io.String.Input("system_prompt", multiline=True, default="You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, wording, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.", dynamic_prompts=False, tooltip="System instructions. Attachment tags can also be used here."),
-                io.String.Input("api_key", optional=True, default="", tooltip="Direct keys are saved in workflows. Leave blank to use an environment variable; local servers usually need no key."),
-                io.String.Input("api_key_env", optional=True, default="", tooltip="Environment variable name. Blank uses OPENROUTER_API_KEY, CEREBRAS_API_KEY, LM_STUDIO_API_KEY, OLLAMA_API_KEY, OPENAI_API_KEY, or GROQ_API_KEY."),
+                io.String.Input("api_key", optional=True, default="", tooltip="Bearer token; the node adds Authorization: Bearer automatically. For OpenCode, enter the service account key (oc_sk_...), rather than your other OpenCode API key. Direct keys are saved in workflows. Leave blank to use an environment variable; local servers usually need no key."),
+                io.String.Input("api_key_env", optional=True, default="", tooltip="Environment variable name. Blank uses OPENROUTER_API_KEY, CEREBRAS_API_KEY, LM_STUDIO_API_KEY, OLLAMA_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, or OPENCODE_API_KEY."),
                 io.String.Input("base_url", optional=True, default="", tooltip="Blank uses the provider default. Custom OpenAI-compatible servers require a URL including the API prefix, e.g. http://localhost:8080/v1. Full endpoint URLs also work."),
-                io.Combo.Input("thinking", optional=True, options=["auto", "enabled", "disabled"], default="auto", tooltip="Auto uses the model default. Requires model support. Cerebras GPT-OSS disabled uses low effort with hidden reasoning; it cannot turn reasoning off. Groq GPT-OSS always reasons: use auto/enabled, never disabled. Groq Qwen3 supports disabled; unsupported models omit thinking controls."),
+                io.Combo.Input("thinking", optional=True, options=["auto", "enabled", "disabled"], default="auto", tooltip="Auto uses the model default. Requires model support. Cerebras GPT-OSS disabled uses low effort with hidden reasoning; it cannot turn reasoning off. Groq GPT-OSS always reasons: use auto/enabled, never disabled. Groq Qwen3 supports disabled; unsupported models omit thinking controls. OpenCode uses model-default thinking."),
                 io.Combo.Input("reasoning_effort", optional=True, options=["auto", "low", "medium", "high"], default="auto", tooltip="Used when thinking is enabled. Groq low/medium/high apply to GPT-OSS 20B/120B and Qwen3.8 27B; other Qwen3 models use their default effort."),
                 io.Int.Input("max_output_tokens", optional=True, default=1024, min=1, max=2147483647, tooltip="Generation budget. Reasoning may consume part of this budget."),
                 io.Int.Input("context_window", optional=True, default=0, min=0, max=2147483647, tooltip="LM Studio and Ollama only; 0 uses the server default. Hosted providers control their context limits."),
@@ -218,6 +236,8 @@ class UniversalLLM(io.ComfyNode):
         endpoint = _endpoint(provider, base_url)
         env_name = api_key_env.strip() or PROVIDERS[provider][1]
         key = api_key.strip() or os.environ.get(env_name, "").strip()
+        if key.lower().startswith("bearer "):
+            key = key[7:].strip()
         if provider in ("OpenRouter", "Cerebras", "Groq") and not key:
             raise ValueError("Set api_key or the provider's API key environment variable.")
         headers = {"Content-Type": "application/json"}
@@ -237,29 +257,32 @@ class UniversalLLM(io.ComfyNode):
                 hints = {
                     400: "Check the model name, thinking mode, sampling settings, and token limits.",
                     401: "Check the API key.",
+                    402: "Check provider credits, billing, and the API key's spending limit.",
                     403: "Check API key permissions and model access.",
-                    404: "Check base_url and the model name.",
-                    429: "Rate limit or quota reached. Wait or check your provider quota.",
+                    404: "Check base_url, model availability, and provider/data-policy settings.",
+                    429: "Rate limit, quota, or shared provider capacity reached. Wait or try another model.",
                 }
                 hint = "Redirects are not followed. Set base_url to the final API URL." if 300 <= response.status_code < 400 else hints.get(response.status_code, "Check the LLM server and provider status.")
-                if provider == "Cerebras":
-                    try:
-                        error_result = response.json()
-                    except requests.exceptions.JSONDecodeError:
-                        error_result = None
-                    error = error_result.get("error") if isinstance(error_result, dict) else None
-                    detail = error.get("message") if isinstance(error, dict) else error
-                    if isinstance(detail, str) and detail.strip():
-                        detail = " ".join(detail.split())
-                        if key:
-                            detail = detail.replace(key, "[redacted]")
-                        hint = f"{detail[:300]} {hint}"
+                try:
+                    error_result = response.json()
+                except requests.exceptions.JSONDecodeError:
+                    error_result = None
+                detail = _error_detail(error_result, key)
+                if detail:
+                    hint = f"{detail} {hint}"
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    if isinstance(retry_after, str) and retry_after.isdecimal():
+                        hint += f" Retry after {retry_after} seconds."
 
                 raise RuntimeError(f"LLM request failed (HTTP {response.status_code}). {hint}")
             try:
                 result = response.json()
             except requests.exceptions.JSONDecodeError:
                 raise RuntimeError("LLM server returned invalid JSON. Check the API endpoint.") from None
+        if isinstance(result, dict) and "error" in result:
+            detail = _error_detail(result, key)
+            raise RuntimeError(f"LLM server reported an error. {detail or 'Check the model, credentials, and settings.'}")
         return (_answer(provider, result),)
 
 
@@ -304,7 +327,7 @@ class GOATUniversalTextGenerator(io.ComfyNode):
             display_name="GOAT'd Text Generator 🐐",
             category="LLM/GOAT'd",
             description="Turn a prompt idea into text using your selected guide and system prompt. Generated text appears on this node and remains available as a STRING output.",
-            search_aliases=["universal llm", "openrouter", "cerebras", "ollama", "lm studio", "language model"],
+            search_aliases=["universal llm", "openrouter", "opencode", "cerebras", "ollama", "lm studio", "language model"],
             is_output_node=True,
             inputs=[
                 fields["prompt_idea"],

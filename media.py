@@ -1,10 +1,12 @@
 # Author: ninjaGurung
 # GitHub: https://github.com/ninjaGurung
 import base64
+from bisect import bisect_left
 from io import BytesIO
 import re
 import wave
 
+import av
 import numpy as np
 from PIL import Image
 
@@ -12,7 +14,7 @@ from comfy_api.latest import Types
 
 
 _TAG = re.compile(r"(?<![\w@])@(image|video|audio)(\d+)(?!\w)")
-_IMAGE_ONLY = {"Cerebras", "LM Studio", "Ollama", "Groq"}
+_IMAGE_ONLY = {"Cerebras", "LM Studio", "Ollama", "Groq", "OpenCode"}
 
 
 def _connected(items, prefix, maximum):
@@ -60,17 +62,33 @@ def _video_frames(video, count):
     video = video.as_trimmed(0.0, duration, strict_duration=False)
     if video is None:
         raise ValueError("Video has no readable frames.")
+    start_time, _ = video.get_active_trim_window()
+    timestamps = []
+    with av.open(video.get_stream_source(), mode="r") as container:
+        stream = container.streams.video[0]
+        start_pts = int(start_time / stream.time_base)
+        end_pts = int((start_time + duration) / stream.time_base)
+        if start_pts:
+            container.seek(start_pts, stream=stream)
+        for frame in container.decode(stream):
+            if frame.pts < start_pts:
+                continue
+            if frame.pts >= end_pts:
+                break
+            timestamps.append(float(frame.pts * stream.time_base) - start_time)
+    if not timestamps:
+        raise ValueError("Video has no readable frames.")
     frame_interval = 1 / frame_rate
-    last_time = max(0.0, duration - frame_interval)
     for index in range(count):
-        timestamp = last_time * index / (count - 1) if count > 1 else 0.0
+        target = timestamps[0] + (timestamps[-1] - timestamps[0]) * index / (count - 1) if count > 1 else timestamps[0]
+        timestamp = timestamps[min(bisect_left(timestamps, target), len(timestamps) - 1)]
         segment = video.as_trimmed(timestamp, min(frame_interval, duration - timestamp), strict_duration=False)
         if segment is None:
             raise ValueError(f"Could not read video frame at {timestamp:.3f}s.")
         frames = segment.get_components().images
         if frames.shape[0] == 0:
             raise ValueError(f"Could not read video frame at {timestamp:.3f}s.")
-        yield timestamp, _image_data(frames[0])
+        yield timestamp, frames[0]
 
 
 def add_media(body, provider, prompt_idea, system_prompt, images=None, videos=None, audios=None, video_mode="auto", video_frame_count=0):
@@ -122,8 +140,8 @@ def add_media(body, provider, prompt_idea, system_prompt, images=None, videos=No
                 {"type": "video_url", "video_url": {"url": "data:video/mp4;base64," + _video_data(video)}},
             ])
         else:
-            for timestamp, data in _video_frames(video, video_frame_count):
-                append_image(f"@{name} frame at {timestamp:.3f}s (visual frames only)", data)
+            for timestamp, frame in _video_frames(video, video_frame_count):
+                append_image(f"@{name} frame at {timestamp:.3f}s (visual frames only)", _image_data(frame))
     for name, audio in audios.items():
         waveform = audio["waveform"]
         if waveform.ndim != 3 or waveform.shape[0] == 0:
