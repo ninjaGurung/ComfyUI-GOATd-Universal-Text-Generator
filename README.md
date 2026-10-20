@@ -33,6 +33,17 @@ Created by **[ninjaGurung](https://github.com/ninjaGurung)**.
 
 Use a recent ComfyUI version with the V3 node API and dynamic-input support. The node uses ComfyUI's existing `requests` dependency. Model files, local servers, and optional GGUF loaders are not bundled or downloaded automatically.
 
+### Updating
+
+Open a terminal in your `ComfyUI/custom_nodes` folder and run:
+
+```bash
+cd ComfyUI-GOATd-Universal-Text-Generator
+git pull --ff-only
+```
+
+Restart ComfyUI, then hard-refresh your browser.
+
 ## Quick start
 
 1. Add **GOAT'd Text Generator Settings 🐐** and **GOAT'd Text Generator 🐐**.
