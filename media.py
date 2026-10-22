@@ -3,6 +3,7 @@
 import base64
 from bisect import bisect_left
 from io import BytesIO
+import math
 import re
 import wave
 
@@ -54,7 +55,24 @@ def _video_data(video):
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def _video_frames(video, count):
+def _video_frame_counts(images, videos, count, max_per_video=12):
+    if count > 0 or not videos:
+        return {name: count for name in videos}
+    image_count = sum(image.shape[0] for image in images.values())
+    image_pixels = sum(image.shape[0] * image.shape[1] * image.shape[2] for image in images.values())
+    frame_share = max(2, (12 - image_count) // len(videos))
+    pixel_share = max(0, 6 * 1024 * 1024 - image_pixels) // len(videos)
+    counts = {}
+    for name, video in videos.items():
+        width, height = video.get_dimensions()
+        duration_count = max(2, math.ceil(video.get_duration() * 2))
+        pixel_count = max(2, pixel_share // max(1, width * height))
+        # Soft budgets retain at least two frames when the clip has them.
+        counts[name] = max(1, min(duration_count, pixel_count, frame_share, max_per_video, video.get_frame_count()))
+    return counts
+
+
+def _video_frames(video, count, unique=False):
     duration = video.get_duration()
     frame_rate = float(video.get_frame_rate())
     if duration <= 0 or frame_rate <= 0:
@@ -79,9 +97,13 @@ def _video_frames(video, count):
     if not timestamps:
         raise ValueError("Video has no readable frames.")
     frame_interval = 1 / frame_rate
+    seen = set()
     for index in range(count):
         target = timestamps[0] + (timestamps[-1] - timestamps[0]) * index / (count - 1) if count > 1 else timestamps[0]
         timestamp = timestamps[min(bisect_left(timestamps, target), len(timestamps) - 1)]
+        if unique and timestamp in seen:
+            continue
+        seen.add(timestamp)
         segment = video.as_trimmed(timestamp, min(frame_interval, duration - timestamp), strict_duration=False)
         if segment is None:
             raise ValueError(f"Could not read video frame at {timestamp:.3f}s.")
@@ -110,9 +132,7 @@ def add_media(body, provider, prompt_idea, system_prompt, images=None, videos=No
     native_video = video_mode == "native" or video_mode == "auto" and provider not in _IMAGE_ONLY
     if videos and native_video and provider in _IMAGE_ONLY:
         raise ValueError(f"{provider} does not accept native video. Choose frames for video_mode.")
-    if video_frame_count == 0:
-        video_frame_count = 2 if provider in ("Cerebras", "Groq") else 12
-    if videos and not native_video and (not isinstance(video_frame_count, int) or video_frame_count < 1):
+    if videos and not native_video and (not isinstance(video_frame_count, int) or video_frame_count < 0):
         raise ValueError("video_frame_count must be 0 (automatic) or a positive integer.")
 
     parts = [{"type": "text", "text": prompt_idea}]
@@ -133,6 +153,7 @@ def add_media(body, provider, prompt_idea, system_prompt, images=None, videos=No
         for index, frame in enumerate(image):
             label = f"@{name}" if image.shape[0] == 1 else f"@{name} image {index + 1}/{image.shape[0]}"
             append_image(label, _image_data(frame))
+    frame_counts = _video_frame_counts(images, videos, video_frame_count, 2 if provider in ("Cerebras", "Groq") else 12) if videos and not native_video else {}
     for name, video in videos.items():
         if native_video:
             parts.extend([
@@ -140,7 +161,7 @@ def add_media(body, provider, prompt_idea, system_prompt, images=None, videos=No
                 {"type": "video_url", "video_url": {"url": "data:video/mp4;base64," + _video_data(video)}},
             ])
         else:
-            for timestamp, frame in _video_frames(video, video_frame_count):
+            for timestamp, frame in _video_frames(video, frame_counts[name], unique=video_frame_count == 0):
                 append_image(f"@{name} frame at {timestamp:.3f}s (visual frames only)", _image_data(frame))
     for name, audio in audios.items():
         waveform = audio["waveform"]

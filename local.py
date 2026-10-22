@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 import comfy.audio
 
-from .media import _connected, _TAG, _video_frames
+from .media import _connected, _TAG, _video_frame_counts, _video_frames
 from .stop_sequences import parse_stop_sequences
 
 
@@ -34,8 +34,9 @@ def _media(prompt, system_prompt, images, videos, audios, video_mode, video_fram
         for index, frame in enumerate(image):
             frames.append(frame)
             labels.append(f"@{name}" if image.shape[0] == 1 else f"@{name} image {index + 1}/{image.shape[0]}")
+    frame_counts = _video_frame_counts(images, videos, video_frame_count)
     for name, video in videos.items():
-        for timestamp, frame in _video_frames(video, video_frame_count or 12):
+        for timestamp, frame in _video_frames(video, frame_counts[name], unique=video_frame_count == 0):
             frames.append(frame)
             labels.append(f"@{name} frame at {timestamp:.3f}s (visual frames only)")
 
@@ -68,7 +69,7 @@ def _media(prompt, system_prompt, images, videos, audios, video_mode, video_fram
         prompt += "\n\nImages in order:\n" + "\n".join(labels)
     if audio_labels:
         prompt += "\n\nAudio segments in order:\n" + "\n".join(audio_labels)
-    return prompt, image_batch, audio_batch
+    return prompt, image_batch, audio_batch, [frame.unsqueeze(0) for frame in frames]
 
 
 def _embedding_count(tokens, kind):
@@ -79,13 +80,14 @@ def generate_local(clip, prompt_idea, system_prompt, thinking, max_output_tokens
     if clip is None:
         raise ValueError("Connect a generation-capable model from Load CLIP to the clip input for ComfyUI Local.")
     stops = parse_stop_sequences(stop_sequences)
-    prompt, image, audio = _media(prompt_idea, system_prompt, images, videos, audios, video_mode, video_frame_count)
-    tokens = clip.tokenize(prompt, image=image, audio=audio, video=None, skip_template=False, min_length=1, thinking=thinking == "enabled", system_prompt=system_prompt)
+    prompt, image, audio, source_images = _media(prompt_idea, system_prompt, images, videos, audios, video_mode, video_frame_count)
+    # Qwen accepts original image sizes; Gemma uses the padded batch.
+    tokens = clip.tokenize(prompt, image=image, images=source_images, audio=audio, video=None, skip_template=False, min_length=1, thinking=thinking == "enabled", system_prompt=system_prompt)
     if {"qwen3_4b", "qwen3_8b"}.intersection(tokens) and thinking in ("enabled", "disabled"):
         template = "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
         if thinking == "disabled":
             template += "<think>\n\n</think>\n\n"
-        tokens = clip.tokenize(prompt, image=image, audio=audio, video=None, skip_template=False, min_length=1, thinking=thinking == "enabled", system_prompt=system_prompt, llama_template=template)
+        tokens = clip.tokenize(prompt, image=image, images=source_images, audio=audio, video=None, skip_template=False, min_length=1, thinking=thinking == "enabled", system_prompt=system_prompt, llama_template=template)
     if "qwen3vl_32b" in tokens:
         raise ValueError("This MiniMax Qwen3-VL 32B text encoder is truncated (50 of 64 layers, no final norm/output head) and cannot faithfully generate text. Load a complete generation checkpoint instead.")
     if set(tokens).issubset({"l", "g", "clip_l", "clip_g", "t5xxl", "t5"}):

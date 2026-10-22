@@ -12,6 +12,25 @@ spec.loader.exec_module(guides)
 
 
 class NewGuideTests(unittest.TestCase):
+    def test_minimax_ref2v_selects_its_six_sections_over_shared_t2v_format(self):
+        sections = ("subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music")
+        for references in (("image1",), ("video1",), ("audio1",), ("image1", "video1", "audio1")):
+            for json_output in (False, True):
+                with self.subTest(references=references, json_output=json_output):
+                    combined = guides.combine_system_prompt("Preserve the requested action.", "MiniMax H3 - Ref2V", references, json_output=json_output)
+                    self.assertTrue("Generation mode for this request: Ref2V (full-reference mode)." in combined, "Ref2V output contract is missing")
+                    contract = combined.split("Generation mode for this request: ", 1)[1]
+                    self.assertEqual(sorted(sections, key=contract.index), list(sections))
+                    self.assertIn("Use detailed_description instead of integrated_multimodal_description", contract)
+                    self.assertIn("Sampled video frames remain observations of their <Video N>", contract)
+                    self.assertIn("do not create extra <Picture N> inputs", contract)
+                    self.assertIn("six top-level keys" if json_output else "six section labels", contract)
+
+    def test_minimax_ref2v_without_media_keeps_text_only_fallback(self):
+        combined = guides.combine_system_prompt("Write a landscape video prompt.", "MiniMax H3 - Ref2V")
+        self.assertIn("Use text-only T2VA", combined)
+        self.assertNotIn("Generation mode for this request: Ref2V", combined)
+
     def test_new_guides_are_registered_with_primary_sources_and_valid_json_examples(self):
         for name in ("MOSS Image", "Fibo 2"):
             self.assertIn(name, guides.GUIDE_OPTIONS)

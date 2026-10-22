@@ -77,7 +77,19 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_ou
     if not reference_names and guide_name in ("MiniMax H3 - T2V / FL2V", "MiniMax H3 - Ref2V"):
         references += " Use text-only T2VA: begin with integrated_multimodal_description, then overall_soundscape and non_diegetic_music. Omit the image-alignment instruction."
     mode = ""
-    if guide_name == "MOSS Image":
+    if guide_name == "MiniMax H3 - Ref2V" and reference_names:
+        mode = (
+            "Ref2V (full-reference mode). Return these six sections in order: "
+            "subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music. "
+            "Use detailed_description instead of integrated_multimodal_description. "
+            "The T2VA/I2VA/FL2VA/L2VA document supplies shared shot, camera, dialogue, and sound rules only; "
+            "its three-field output format and image-alignment preambles do not apply to this request. "
+            "Define referenced subjects and their source assets, then describe the requested action using those labels. "
+            "Sampled video frames remain observations of their <Video N>; do not create extra <Picture N> inputs from them. "
+            "Use first/last-frame roles only when the user explicitly assigns them. "
+        )
+        mode += "Use the same six top-level keys in the JSON object, without a wrapper." if json_output else "Begin with subject_definitions: and use the six section labels, without a preamble."
+    elif guide_name == "MOSS Image":
         mode = "T2I. Write a still-image caption or the requested MOSS layout JSON. Connected images may inform the caption; do not add video timelines, audio fields, or image-editing claims."
     elif guide_name == "Fibo 2":
         if any(name.startswith("image") for name in reference_names):

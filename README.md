@@ -119,8 +119,11 @@ Media support depends on both provider and model. Video frame mode sends visuals
 | **frequency_penalty / presence_penalty** | Reduce repeated tokens or encourage new ones. |
 | **stop_sequences** | Literal stop text, or a JSON list of stop strings. |
 | **timeout_seconds** | API connection/read timeout; increase for slow servers. |
-| **force_regenerate** | Request a fresh result instead of reusing an unchanged cached run. |
-| **video_mode / video_frame_count** | Choose native video or sampled frames and their count. **auto / 0** uses the default selection. |
+| **force_regenerate** | **true** requests a fresh answer each execution; **false** allows unchanged runs to use cached output. |
+| **video_mode** | **auto** picks the supported route; **native** sends video; **frames** sends sampled stills without sound. ComfyUI Local uses frames. |
+| **video_frame_count** | **0** selects frames automatically. A positive number requests that many frames from each video; more frames generally take longer. Ignored for native-video uploads. |
+
+Auto sampling works across models. It targets about **2 frames/second**, sharing soft budgets of **12 visual references** and roughly **6 megapixels** across images and videos. It keeps at least two frames per video when available; existing image batches reduce the remaining budget. Cerebras/Groq Auto uses at most two frames per video. Positive counts override these sampling budgets. Source resolution is preserved.
 
 Unsupported controls are omitted. Server providers start with sampling defaults (`-1`; frequency/presence penalties `0`). ComfyUI Local starts at temperature **0.7**, top_p **0.95**, top_k **40**, min_p **0.05**, and repetition_penalty **1.1**.
 
@@ -201,6 +204,7 @@ Use a complete generation checkpoint and matching loader. Ordinary CLIP/T5 encod
 | HTTP 401 / 403 / 402 | Check key, permissions, model access, and account credit. |
 | HTTP 404 / 429 | Check endpoint/model availability or wait for rate limits to reset. |
 | Connection error / timeout | Start the server, check base_url, or increase timeout_seconds. |
+| Slow local video generation | Use video_frame_count **0** for adaptive sampling, or choose a lower positive count. Reduce max_output_tokens if a shorter answer is enough. |
 | Media or generation error | Check the model's capabilities, loader, and attachment tags. |
 | Old controls or repeated cached output | Restart ComfyUI, hard-refresh the browser, or enable force_regenerate. |
 

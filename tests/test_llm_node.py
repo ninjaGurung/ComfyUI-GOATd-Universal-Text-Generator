@@ -26,6 +26,7 @@ NODE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(NODE_DIR.parents[1]))
 from comfy_api.latest import InputImpl, Types, io
 from comfy_api.latest import _io
+from comfy.text_encoders.qwen3vl import Qwen3VLTokenizer
 
 COMFY_DIR = Path(_io.__file__).resolve().parents[2]
 
@@ -562,6 +563,15 @@ class UniversalLLMTests(unittest.TestCase):
         self.assertIn("FLUX.2 Klein 9B", clip.tokenize.call_args.kwargs["system_prompt"])
         self.assertTrue(clip.tokenize.call_args.kwargs["system_prompt"].startswith("Preserve my wording."))
 
+    def test_minimax_ref2v_contract_is_identical_for_local_and_api(self):
+        request = dict(prompt_idea="Use @image1 as the subject in the setting of @video1.", system_prompt="Keep the requested action.", prompt_guide="MiniMax H3 - Ref2V", images={"image1": torch.zeros(1, 2, 2, 3)}, videos={"video1": self.make_video()})
+        clip = self.local_clip("qwen3vl_4b")
+        Generator.execute(**request, settings=Settings.execute(provider="ComfyUI Local")[0], clip=clip)
+        local_system = clip.tokenize.call_args.kwargs["system_prompt"]
+        Generator.execute(**request, settings=Settings.execute(provider="OpenRouter", model="test/model", api_key="test-secret")[0])
+        self.assertEqual(self.body()["messages"][0]["content"], local_system)
+        self.assertTrue("Generation mode for this request: Ref2V (full-reference mode)." in local_system)
+
     def test_image_guides_select_mode_from_connected_images(self):
         for guide in ("Qwen Image 2.1", "FLUX.2 Klein 9B", "Krea 2"):
             for references, expected in (((), "T2I"), (("audio1",), "T2I"), (("image1",), "I2I / Ref2I"), (("image2", "image10"), "I2I / Ref2I")):
@@ -834,11 +844,49 @@ class UniversalLLMTests(unittest.TestCase):
         self.assertLessEqual(serialize.call_count, 1)
 
     def test_automatic_frame_count_and_explicit_provider_override(self):
-        for provider, count, expected in (("Cerebras", 0, 2), ("Cerebras", 12, 12), ("OpenRouter", 0, 12), ("Groq", 0, 2), ("Groq", 12, 12)):
+        for provider, count, expected in (("Cerebras", 0, 2), ("Cerebras", 12, 12), ("OpenRouter", 0, 2), ("Groq", 0, 2), ("Groq", 12, 12)):
             with self.subTest(provider=provider, count=count):
                 self.generate(provider, videos={"video1": self.make_video()}, video_mode="frames", video_frame_count=count)
                 parts = self.body()["messages"][-1]["content"]
                 self.assertEqual(sum(part["type"] == "image_url" for part in parts), expected)
+
+    def test_auto_video_counts_follow_duration_resolution_and_source_frames(self):
+        for duration, width, height, source_frames, expected in ((2, 1280, 720, 60, 4), (60, 1280, 720, 1800, 6), (60, 1920, 1080, 1800, 3), (60, 3840, 2160, 1800, 2), (60, 320, 240, 1800, 12), (1, 640, 480, 1, 1)):
+            with self.subTest(duration=duration, dimensions=(width, height), source_frames=source_frames):
+                video = Mock()
+                video.get_duration.return_value = duration
+                video.get_dimensions.return_value = (width, height)
+                video.get_frame_count.return_value = source_frames
+                self.assertEqual(media_module._video_frame_counts({}, {"video1": video}, 0), {"video1": expected})
+
+    def test_auto_video_counts_share_budget_with_other_references(self):
+        video = Mock()
+        video.get_duration.return_value = 60
+        video.get_dimensions.return_value = (1280, 720)
+        video.get_frame_count.return_value = 1800
+        videos = {"video1": video, "video2": video}
+        self.assertEqual(media_module._video_frame_counts({}, videos, 0), {"video1": 3, "video2": 3})
+        images = {"image1": SimpleNamespace(shape=(2, 1000, 1000, 3))}
+        self.assertEqual(media_module._video_frame_counts(images, videos, 0), {"video1": 2, "video2": 2})
+        video.get_dimensions.return_value = (320, 240)
+        videos["video3"] = video
+        self.assertEqual(sum(media_module._video_frame_counts({}, videos, 0).values()), 12)
+
+    def test_explicit_video_count_bypasses_auto_limits(self):
+        video = Mock(spec=[])
+        self.assertEqual(media_module._video_frame_counts({}, {"video1": video, "video2": video}, 40, max_per_video=2), {"video1": 40, "video2": 40})
+
+    def test_local_auto_video_sampling_is_model_independent(self):
+        for namespace in ("gemma4", "qwen3vl_4b", "qwen35"):
+            with self.subTest(namespace=namespace):
+                clip = self.local_clip(namespace)
+                self.generate("ComfyUI Local", clip=clip, videos={"video1": self.make_video()})
+                self.assertEqual(clip.tokenize.call_args.kwargs["image"].shape[0], 2)
+
+    def test_auto_video_sampling_avoids_duplicate_timestamps(self):
+        frames = list(media_module._video_frames(self.make_video(), 12, unique=True))
+        self.assertEqual(len(frames), 5)
+        self.assertEqual(len({timestamp for timestamp, _ in frames}), 5)
 
     def local_clip(self, namespace="qwen3_4b", answer="A local cabin."):
         clip = Mock(spec=["tokenize", "generate", "decode", "is_dynamic", "clone"])
@@ -1036,6 +1084,16 @@ class UniversalLLMTests(unittest.TestCase):
         self.assertEqual(call.kwargs["image"][-1].sum().item(), 36)
         self.assertIn("@image1 image 2/2\n@image10", call.args[0])
 
+    def test_local_qwen_media_keeps_original_image_and_video_frame_sizes(self):
+        clip = self.local_clip("qwen3vl_4b")
+        clip.tokenize.side_effect = Qwen3VLTokenizer(model_type="qwen3vl_4b").tokenize_with_weights
+        images = torch.ones(2, 2, 3, 3)
+        self.generate("ComfyUI Local", clip=clip, images={"image1": images}, videos={"video1": self.make_video()}, video_frame_count=3)
+        tokens = clip.generate.call_args.args[0]
+        media = [token[0]["data"] for batches in tokens.values() for batch in batches for token in batch if isinstance(token[0], dict) and token[0].get("type") == "image"]
+        self.assertEqual([tuple(image.shape) for image in media], [(1, 2, 3, 3)] * 2 + [(1, 64, 64, 3)] * 3)
+        self.assertTrue(torch.equal(media[0], images[:1]))
+
     def test_local_media_tags_and_ignored_modalities_fail_before_generation(self):
         clip = self.local_clip()
         with self.assertRaisesRegex(ValueError, "no connected media"):
@@ -1110,7 +1168,7 @@ class UniversalLLMTests(unittest.TestCase):
         clip = self.local_clip("gemma4")
         with patch.object(video, "save_to", wraps=video.save_to) as serialize:
             self.generate("ComfyUI Local", clip=clip, videos={"video1": video})
-        self.assertEqual(clip.tokenize.call_args.kwargs["image"].shape[0], 12)
+        self.assertEqual(clip.tokenize.call_args.kwargs["image"].shape[0], 2)
         self.assertLessEqual(serialize.call_count, 1)
 
     def test_custom_server_receives_all_media_types(self):
