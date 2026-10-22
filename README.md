@@ -1,181 +1,151 @@
 # GOAT'd Text Generator 🐐
 
-**Turn your ideas into prompts, captions, and useful text without leaving ComfyUI.**
+Write prompts, captions, descriptions, summaries, and other text inside ComfyUI using a hosted or local LLM. Connect the `text` output to CLIP Text Encode, a text viewer, or any compatible STRING input.
 
-**Easy to integrate into your existing ComfyUI workflows:** connect the node's `text` output to CLIP Text Encode, a text preview, or any compatible STRING input.
-
-A ComfyUI custom node for writing prompts, captions, descriptions, and other text with cloud or local LLMs. Add images, videos, or audio when your chosen model supports them. The result is a normal `STRING`, ready for Show Text, CLIP Text Encode, or another text input.
-
-Created by **[ninjaGurung](https://github.com/ninjaGurung)**.
-
-**Example workflows:** [Local CLIP](workflows/GOATd_Local_Text_Gen.json) and [Server API](workflows/GOATd_API_Text_Gen.json).
+Created by [ninjaGurung](https://github.com/ninjaGurung).
 
 ## Features
 
-- **Cloud and local models:** OpenRouter, OpenCode, Cerebras, Groq, LM Studio, Ollama, OpenAI-compatible servers, and generation-capable models loaded directly in ComfyUI.
-- **Two separate nodes:** Keep your writing area clean while managing model settings in a connected Settings node.
-- **Prompt guides:** Add model-specific writing instructions to your system prompt.
-- **Multimodal inputs:** Dynamic sockets for up to 10 images, 4 videos, and 6 audio inputs. Connecting media reveals another socket; removing it hides extra trailing sockets.
-- **Media tags:** Type `@` to suggest connected attachments, or `@im` to filter images. Tags work in both prompt fields.
-- **Readable output:** A large, read-only preview and a `text` output that connects to any compatible STRING input. All three text areas scroll independently.
-- **Text controls:** A clear button sits before the copy button beside each text area's title. Clearing Output also clears its saved preview. A checkmark confirms copying for five seconds.
-- **Saved previews and caching:** Generated text is restored with saved workflows. Unchanged runs can reuse a cached result; force regeneration when needed.
+- Hosted providers, LM Studio, Ollama, and models loaded directly in ComfyUI.
+- Separate Settings and Generator nodes, with searchable model lists and custom model IDs.
+- Optional image, video, and audio references, with clickable `@` tags.
+- Image and video prompt guides, plain-text or structured JSON output.
+- Optional conversation memory keeps previous text turns within your token limit, with a usage meter and a **New context** button to start fresh.
+- Copy/clear controls, saved output previews, and a generation-info output.
+
+## Local workflow
+
+![Local text generation with image and video references](workflows/GOATd_Text_Gen_Local_WF.png)
+
+## API workflow
+
+![API text generation with structured output and generation info](workflows/GOATd_Text_Gen_API_WF.png)
+
+## Model selection (based on selected provider, requires API key)
+
+![Searchable provider model list](workflows/GOATd_Text_Gen_API_ProviderModelList.png)
 
 ## Installation
 
-1. Open a terminal in your `ComfyUI/custom_nodes` folder and clone the repository:
+1. Open a terminal in `ComfyUI/custom_nodes` and run:
 
    ```bash
    git clone https://github.com/ninjaGurung/ComfyUI-GOATd-Universal-Text-Generator.git
    ```
-2. Restart ComfyUI, then hard-refresh your browser.
+
+2. Restart ComfyUI and hard-refresh the browser.
 3. Find both nodes under **LLM / GOAT'd**.
 
-Use a recent ComfyUI version with the V3 node API and dynamic-input support. The node uses ComfyUI's existing `requests` dependency. Model files, local servers, and optional GGUF loaders are not bundled or downloaded automatically.
+Use a recent ComfyUI version with the V3 node API and dynamic-input support. Models, local servers, and optional GGUF loaders are installed separately.
 
-### Updating
+## Upgrade
 
-Open a terminal in your `ComfyUI/custom_nodes` folder and run:
+Inside the installed node folder, run:
 
 ```bash
-cd ComfyUI-GOATd-Universal-Text-Generator
 git pull --ff-only
 ```
 
-Restart ComfyUI, then hard-refresh your browser.
+Restart ComfyUI and hard-refresh the browser.
 
-## Quick start
+## Workflow and examples
 
-1. Add **GOAT'd Text Generator Settings 🐐** and **GOAT'd Text Generator 🐐**.
-2. Connect the Settings node's `settings` output to the generator's last input.
-3. Choose a provider. For a server/API provider, enter its exact model ID and supply a key or environment variable when required. For **ComfyUI Local**, load a generation-capable model with **Load CLIP** or **CLIPLoader (GGUF)**; the Settings model field is ignored.
-4. Write your **Prompt Idea**, set the **System Prompt**, and choose a prompt guide or **None**.
-5. Optionally connect media. For **ComfyUI Local**, connect a generation-capable model to `clip`.
-6. Click **Run**. Read the answer in **Output**, or connect `text` to another node.
+1. Connect **GOAT'd Text Generator Settings** to the Generator's `settings` input.
+2. Choose a provider and model. For **ComfyUI Local**, connect a generation-capable model to `clip` instead.
+3. Write your request in **Prompt Idea**. Set the response style in **System Prompt** and select a guide, or **None**.
+4. Connect any references and click **Run**. Read **Output** or send `text` to another node.
 
 ```mermaid
 flowchart LR
-    settings["GOAT'd Text Generator Settings<br/>Provider + generation settings"] -->|settings| generator["GOAT'd Text Generator 🐐<br/>Prompt Idea + System Prompt + Prompt Guide"]
-    media["Optional media<br/>Images / videos / audio"] -.->|media inputs| generator
-    clip["Load CLIP / CLIPLoader (GGUF)<br/>For ComfyUI Local"] -.->|clip| generator
-    generator -->|text| preview["Show Text / Text Preview"]
+    settings["Settings<br/>Provider + model + controls"] -->|settings| generator["GOAT'd Text Generator 🐐<br/>Prompt Idea + System Prompt + Guide"]
+    media["Optional references<br/>Images / videos / audio"] -.->|media inputs| generator
+    clip["Load CLIP / CLIPLoader GGUF<br/>ComfyUI Local only"] -.->|clip| generator
+    generator -->|text| preview["Text viewer / STRING input"]
     generator -->|text| encode["CLIP Text Encode"]
+    generator -->|info| info["ShowAny / STRING viewer"]
 ```
 
-Solid arrows show the settings and text connections; dashed arrows show optional inputs. Read the result directly in the generator's **Output**, or connect it to a downstream node.
+For CLIP Text Encode, convert its `text` widget to an input before connecting. The Generator also runs without a downstream viewer.
 
-For **CLIP Text Encode**, convert its `text` widget into an input, then connect the generator's `text` output. The generator also runs without a downstream node.
-
-**Prompt Idea:** `A small cabin beside a snowy forest at sunset.`  
-**System Prompt:** `Expand the idea into a detailed image prompt. Return only the prompt.`
-
-## Example workflows
-
-Ready-to-use examples are included in the [workflows](workflows/) folder:
-
-| Workflow | What it demonstrates |
+| Example request | Suggested system instruction |
 | --- | --- |
-| [Local CLIP text generation](workflows/GOATd_Local_Text_Gen.json) | Generate text with a model loaded directly in ComfyUI through the `clip` input. |
-| [Server API text generation](workflows/GOATd_API_Text_Gen.json) | Generate text through a provider/server configured in the Settings node. |
+| `A cabin beside a snowy forest at sunset.` | Expand into an image prompt; return only the prompt. |
+| `Describe @image1 for a product listing.` | Write a short factual description. |
+| `Summarize the action in @video1.` | Return five concise bullet points. |
 
-Download a workflow JSON and drag it onto the ComfyUI canvas, or open it through ComfyUI's workflow menu. Select your available model and media files; for API workflows, configure the provider, model ID, endpoint, and credentials as needed. Click **Run** to generate text.
+Import either JSON by dragging it onto the canvas, then select your own models and media:
 
-### Local CLIP example
+- [Local workflow](workflows/GOATd_Text_Gen_Local_WF.json): a loaded CLIP model with image and video inputs.
+- [API workflow](workflows/GOATd_Text_Gen_API_WF.json): provider settings, an image input, and an Easy-Use **ShowAny** info viewer. Install Easy-Use or remove/replace that viewer.
 
-**ComfyUI Local** uses a Qwen3-VL checkpoint loaded through **Load CLIP**, with two reference images and generated text connected to **Text Preview**.
-
-![Local CLIP workflow with two reference images and Text Preview](workflows/local-clip-workflow.png)
-
-### Server API example
-
-**Cerebras** uses an image reference and the **Qwen Image 2.1** prompt guide to generate a character-sheet prompt. Configure your provider and credentials in the Settings node.
-
-![Cerebras server API workflow with an image reference](workflows/server-api-workflow.png)
+Screenshots may show additional optional preview nodes.
 
 ## Generator fields
 
-| Field | What it does |
+| Field | Purpose |
 | --- | --- |
-| **Prompt Idea** | Your request, rough concept, or text to improve. This is the larger editable text area. |
-| **System Prompt** | Instructions for how the LLM should answer: style, format, language, or constraints. |
-| **Prompt Guide** | Adds the selected guide to your system prompt. **None** leaves the system prompt unchanged. |
-| **Images** | Optional `IMAGE` inputs, tagged `@image1` through `@image10`. A socket may contain an image batch. |
-| **Videos** | Optional `VIDEO` inputs, tagged `@video1` through `@video4`. Use a VIDEO loader; an IMAGE frame batch needs conversion first. |
-| **Audios** | Optional `AUDIO` inputs, tagged `@audio1` through `@audio6`. Requires an audio-capable provider and model. |
-| **clip** | Optional ComfyUI model connection used by **ComfyUI Local**. This is the second-last input. |
-| **settings** | Required connection from **GOAT'd Text Generator Settings 🐐**. This is the last input. |
-| **Output / text** | The final answer: a read-only preview and one `STRING` output. Results never overwrite your prompt fields. |
+| **Prompt Idea** | Your request or text to improve. |
+| **System Prompt** | Response instructions: style, language, format, and constraints. |
+| **Prompt Guide** | Optional model-specific writing guidance. **None** uses your system instructions alone. |
+| **images / videos / audios** | Optional references: up to 10 image, 4 video, and 6 audio sockets. |
+| **clip** | A generation-capable model for ComfyUI Local. |
+| **settings** | Connection from the Settings node. |
+| **Output / text** | Read-only preview and STRING output. |
+| **info** | JSON-formatted STRING with provider/model, parameters, timing, token usage when available, media counts, and context information. Connect to ShowAny or a STRING viewer. |
+| **New context** | Clears remembered turns, Prompt Idea, and Output; keeps System Prompt and Prompt Guide. Shown when memory is enabled. |
 
-### Media tags
+Type `@` in either prompt field to select a connected reference, such as `@image1`. All connected media are sent, including untagged inputs. Remove unused connections; a tag must point to a connected socket.
 
-```text
-Compare @image1 with @image2 and describe the action in @video1.
-```
-
-Type `@` inside either prompt area to see available connected tags. Select with a click, or use Arrow keys and Enter/Tab. Escape closes suggestions. Inserting a tag preserves the surrounding text. Tags appear as colored references: click a tag to choose a replacement, or click its `×` to remove that reference from the prompt. Removing a tag does not disconnect its media input.
-
-All connected media are sent, even when they are not tagged. Repeated tags do not resend an attachment. A tag pointing to an unconnected socket raises an error.
-
-## Prompt guides
-
-The dropdown shows **📁 MiniMax H3**, **📁 Seedance**, **None**, then the remaining guides alphabetically. **None** is the default.
-
-| Guide | What it helps write |
-| --- | --- |
-| **📁 MiniMax H3 → T2V / FL2V** | Text-to-video and first/last-frame video prompts. |
-| **📁 MiniMax H3 → Ref2V** | Prompts using supplied visual references. Includes the T2V guide it depends on. |
-| **📁 MiniMax H3 → Singularity** | Prompts following the supplied Singularity guide. |
-| **📁 Seedance → 2.0 / 2.5** | Scene, action, camera, reference, and sound descriptions. |
-| **FLUX.2 Klein 9B** | Clear image prompts describing subjects, composition, and appearance. |
-| **GPT Image 2.5** | Image generation/editing prompts with clear visual details and exact requested text. |
-| **Krea 2** | Image prompts with subject, style, lighting, and composition. |
-| **Nano Banana Pro** | Image creation/editing prompts with reference roles and clear constraints. |
-| **Qwen Image 2.1** | Image prompts with layout, visual details, and text requirements. |
-| **Wan 3.0** | Video prompts describing action, camera movement, references, and sound. |
-
-Guides describe the **image/video model you are writing for**, not the LLM generating the text. They do not load those models or generate images/videos. Guides are bundled locally; selecting one makes no extra web request. Explicit user details take precedence over guide examples.
-
-MiniMax H3, Qwen Image 2.1, Wan 3.0, Seedance 2.0 / 2.5, FLUX.2 Klein 9B, and Krea 2 load the full supplied Markdown documents from `prompt_guides/`. The remaining summaries draw on [GPT Image](https://developers.openai.com/api/docs/guides/image-prompting) and [Nano Banana Pro](https://blog.google/products-and-platforms/products/gemini/prompting-tips-nano-banana-pro/).
-
-For Qwen Image 2.1, FLUX.2 Klein 9B, and Krea 2, connected images select I2I / Ref2I and must be named in the finished prompt; no images selects T2I. For Seedance 2.0 / 2.5 and Wan 3.0, any connected media selects Ref2V; no media selects T2V. First/last-frame roles must be specified by the user.
+Media support depends on both provider and model. Video frame mode sends visuals without the soundtrack; native video/audio requires a compatible endpoint and model. ComfyUI Local reads video as sampled frames.
 
 ## Settings fields
 
-Settings only take effect where the selected provider and model support them. Unsupported provider-specific fields are omitted. For sampling fields, **-1 uses provider/native defaults**.
+**Show advanced settings** reveals additional controls; **Hide advanced settings** collapses them. Model lists refresh when provider, credentials, or address changes. Search the list or enter your own model ID.
 
-New Settings nodes start in **ComfyUI Local** mode with the defaults below. Every field remains editable. Switching providers preserves current values; loading a saved workflow restores its saved values.
+| Field | Purpose |
+| --- | --- |
+| **provider / model** | Where generation runs and its model ID. The model field is unused for ComfyUI Local. |
+| **api_key** | Provider key. Displayed masked, but saved in workflow JSON. |
+| **api_key_env** | Environment-variable name containing the key; available under advanced settings. |
+| **base_url** | Provider's default address, or your custom endpoint. |
+| **thinking / reasoning_effort** | Reasoning mode and effort, where supported. Some models always reason. |
+| **seed / control after generate** | Request repeatable sampling; keep or change the seed after a run. `-1` leaves it unset/random. |
+| **json_output** | Default **false**. Enable to request and validate a JSON object. Requires model support. |
+| **Remember context / context_window** | Enable text memory at **8192 tokens**, or edit the limit. Disable for **0**; re-enabling restores the last custom limit. |
+| **max_output_tokens** | Output budget; reasoning may consume part of it. |
+| **temperature** | Lower is more focused; higher is more varied. |
+| **top_p / top_k / min_p** | Limit choices by cumulative probability, token count, or relative probability. |
+| **repetition_penalty** | Discourage repeated text; **1** is neutral. |
+| **frequency_penalty / presence_penalty** | Reduce repeated tokens or encourage new ones. |
+| **stop_sequences** | Literal stop text, or a JSON list of stop strings. |
+| **timeout_seconds** | API connection/read timeout; increase for slow servers. |
+| **force_regenerate** | Request a fresh result instead of reusing an unchanged cached run. |
+| **video_mode / video_frame_count** | Choose native video or sampled frames and their count. **auto / 0** uses the default selection. |
 
-| Field | Default | Simple explanation |
-| --- | --- | --- |
-| **provider** | ComfyUI Local | Where the LLM runs. Choose a cloud service, local server, or ComfyUI Local. |
-| **model** | Empty | Exact model ID from the selected provider/server. Ignored for ComfyUI Local. |
-| **api_key** | Empty | Your provider's API key. OpenCode uses the service account's API key. Overrides the environment-variable value; Bearer authentication is added automatically. |
-| **api_key_env** | Empty | Name of an environment variable containing the key. Empty uses the provider's default variable below. |
-| **base_url** | Empty | Custom server/API address. Empty uses the provider default. Required for OpenAI-compatible servers. Full endpoint URLs also work. |
-| **thinking** | disabled | Use the model's default reasoning behavior, enable it, or disable it when supported. |
-| **reasoning_effort** | auto | Request low, medium, or high reasoning effort when thinking is enabled. Support varies by model. |
-| **max_output_tokens** | 1024 | Maximum generation budget. Reasoning may use part of this budget. |
-| **context_window** | 0 | Context size for LM Studio/Ollama. **0** uses the server default. Hosted and ComfyUI Local context limits are managed elsewhere. |
-| **temperature** | 0.7 | Higher gives more varied results; lower is more focused. **0** uses greedy decoding locally. |
-| **top_p** | 0.95 | Samples from the smallest token pool reaching this probability. Lower values narrow the choices. |
-| **top_k** | 40 | Limits sampling to the most likely K tokens. Used by OpenRouter, LM Studio, Ollama, and ComfyUI Local. |
-| **min_p** | 0.05 | Filters out tokens that are unlikely relative to the best token. Same provider support as top_k. |
-| **repetition_penalty** | 1.1 | Discourages repeated text. **1** is neutral; higher values discourage repetition. Same provider support as top_k. |
-| **frequency_penalty** | 0 | Positive values discourage frequently repeated tokens. Used by OpenRouter, Cerebras, and OpenAI-compatible servers. |
-| **presence_penalty** | 0 | Positive values encourage new topics/tokens. Used by OpenRouter, Cerebras, OpenAI-compatible servers, and ComfyUI Local. |
-| **seed** | -1 | A nonnegative value requests repeatable sampling where supported. **-1** leaves it unset remotely or chooses a random local seed. Not exposed by LM Studio's native API. |
-| **control after generate** | Frontend-managed | If shown beside seed, keep it fixed or change it after a run. This is a ComfyUI seed-widget control, not an API parameter. |
-| **stop_sequences** | Empty | Stop text: enter a literal such as `</s>` or a JSON list such as `["</s>", "\nUser:"]`. Newline-separated lists also work. |
-| **timeout_seconds** | 120 | Connection/read timeout for API requests. Increase it for slow local servers. Does not limit native ComfyUI generation. |
-| **force_regenerate** | false | **true** requests a new result every execution. **false** allows unchanged runs to use ComfyUI's cache. |
-| **video_mode** | auto | **auto** chooses native video or sampled frames by provider; **native** sends video; **frames** sends timestamped images. |
-| **video_frame_count** | 0 | Frames per video in frame mode. **0** selects 2 for Cerebras/Groq and 12 for other paths. A positive value sets the count. |
+Unsupported controls are omitted. Server providers start with sampling defaults (`-1`; frequency/presence penalties `0`). ComfyUI Local starts at temperature **0.7**, top_p **0.95**, top_k **40**, min_p **0.05**, and repetition_penalty **1.1**.
 
-Some reasoning models reject custom temperature/top_p; use **-1** for their defaults. Some models always reason and cannot disable thinking. LM Studio's native API does not expose stop sequences. ComfyUI Local trims stop text after generation, so stops do not reduce its generated-token work. Reasoning effort and frequency penalty are not native ComfyUI generation controls.
+Model, reasoning, credentials, endpoint, and advanced settings are remembered separately per provider while the node is open. Only the current provider's values are saved in the workflow.
 
-## Providers and API keys
+The context meter estimates text usage. Older turns are removed as the limit fills; previous media is not retained. Memory clears on restart or after an idle hour. Hosted model limits still apply.
 
-| Provider | Default address | Default key environment variable |
+## Prompt guides
+
+Guides help write prompts for a target image/video model; they do not load it or generate media. Choose **None** for general writing. The bundled files are in [prompt_guides](prompt_guides/).
+
+| Guide | Use |
+| --- | --- |
+| **MiniMax H3** | T2V / FL2V, Ref2V, and Singularity video prompts. |
+| **Seedance 2.0 / 2.5**, **Wan 3.0** | Scene, action, camera, reference, and sound instructions. |
+| **Fibo 2** | Dev generation/editing and Edit Turbo editing. Plain language by default; VGL JSON when json_output is enabled. |
+| **MOSS Image** | Still-image captions, exact visible text, and layout JSON. |
+| **Qwen Image 2.1**, **FLUX.2 Klein 9B**, **Krea 2** | Image prompts with composition, appearance, and reference roles. |
+| **GPT Image 2.5**, **Nano Banana Pro** | Image generation/editing instructions and text requirements. |
+
+State reference roles explicitly, including first/last frames when needed. For Fibo, keep reference order consistent with the downstream image workflow. MOSS references can inform the caption; they do not enable native image editing.
+
+## Providers
+
+| Provider | Default address | Default key variable |
 | --- | --- | --- |
 | OpenRouter | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` |
 | OpenCode | `https://opencode.ai/inference/openai/v1` | `OPENCODE_API_KEY` |
@@ -183,89 +153,57 @@ Some reasoning models reject custom temperature/top_p; use **-1** for their defa
 | Groq | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` |
 | LM Studio | `http://127.0.0.1:1234` | `LM_STUDIO_API_KEY` |
 | Ollama | `http://127.0.0.1:11434` | `OLLAMA_API_KEY` |
-| OpenAI-compatible | Your server's API prefix, e.g. `http://localhost:8080/v1` | `OPENAI_API_KEY` |
-| ComfyUI Local | Connected `clip` model; no server | Not used |
+| OpenAI-compatible | `https://api.openai.com/v1` or your server | `OPENAI_API_KEY` |
+| ComfyUI Local | Connected CLIP model; no server | Not needed |
 
-Start LM Studio/Ollama and make your model available before running. LM Studio uses its native `/api/v1/chat` endpoint; older installations can use OpenAI-compatible with `http://127.0.0.1:1234/v1`. Ollama uses `/api/chat`.
+Enter a key in **api_key**, or create an environment variable before launching ComfyUI and leave **api_key** empty. **api_key_env** can stay blank to use the default variable above. Use environment variables to keep keys out of shared workflows. Prompts and connected media are sent to the selected endpoint.
 
-Use your provider's exact model ID. For GPT-OSS, Cerebras uses `gpt-oss-120b`; Groq uses `openai/gpt-oss-120b`. GPT-OSS is a text model and always reasons: use **auto** or **enabled**.
+### LM Studio
 
-### OpenCode setup
+Load a compatible chat/vision model and start the local server. Select **LM Studio**, keep the default address unless you changed it, then refresh and choose the model. This preset uses `/api/v1/chat`; older servers can use **OpenAI-compatible** with `http://127.0.0.1:1234/v1`.
 
-Choose **OpenCode**, leave **base_url** blank, and enter an accessible Chat Completions model ID such as `kimi-k2.6`, without an `opencode/` prefix. The full URL `https://opencode.ai/inference/openai/v1/chat/completions` also works.
+### Ollama
 
-In the [OpenCode Console](https://opencode.ai/console), open **Keys**, create/open a service account, and create a key with **Inference only** permission. Put the **service account key** (`oc_sk_...`) in the node's generically named **api_key** field, or set `OPENCODE_API_KEY` before starting ComfyUI. If you have both a service account key and another OpenCode API key, use the service account key for this endpoint. No second credential, workspace header, or Bearer field is required. The node adds `Authorization: Bearer <key>` and also accepts a pasted `Bearer <key>` value. Paid models need model access and available budget.
+Download a model with `ollama pull MODEL_NAME`, replacing `MODEL_NAME` with your chosen model. Start Ollama (`ollama serve` if needed), select **Ollama**, and refresh models. Use a vision model for image references.
 
-On October 17, 2026, a direct request to `deepseek-v4.1-flash-free` without credentials returned HTTP 403 `FreeTierError`: OpenCode's free tier can only be used from within OpenCode. Although the inference docs describe unauthenticated free chat requests, free-tier availability from this node is subject to OpenCode's server restrictions. An extra credential field does not resolve that response; use an accessible paid model, or use the free model within OpenCode.
+### OpenCode
 
-This preset supports **OpenAI Chat Completions** and uses model-default thinking. OpenCode's GPT models use Responses, Claude/Qwen use Anthropic Messages, and Gemini uses generateContent; those API formats are not supported by this preset or the generic OpenAI-compatible path. Check the [model endpoints](https://opencode.ai/v2/docs/console/models/) and [inference documentation](https://opencode.ai/v2/docs/console/api/inference/) before choosing a model.
+In the [OpenCode Console](https://opencode.ai/console), create a **service account API key** (`oc_sk_...`) with inference access. Use that key in **api_key**, or set `OPENCODE_API_KEY`. Choose **OpenCode** and select an accessible **Chat Completions** model. Other API formats are not supported by this preset; model access and free-tier restrictions depend on your account.
 
-### OpenRouter setup
+### OpenRouter
 
-Choose **OpenRouter**, leave **base_url** blank, and use the exact model ID from [OpenRouter Models](https://openrouter.ai/models), including its provider prefix and any `:free` suffix. Enter an [OpenRouter API key](https://openrouter.ai/settings/keys) in **api_key**, or set `OPENROUTER_API_KEY` before starting ComfyUI. A model vendor's own API key cannot authenticate to OpenRouter. No second credential or extra header is required; attribution headers are optional.
+Create a key in [OpenRouter Keys](https://openrouter.ai/settings/keys). Select **OpenRouter**, enter that key or set `OPENROUTER_API_KEY`, then refresh models. Use the exact [model ID](https://openrouter.ai/models), including its provider prefix and any `:free` suffix. Check credits, model availability, and rate limits if requests fail.
 
-For a first connection test, use **thinking = auto**, **temperature = -1**, **top_p = -1**, **top_k = -1**, **min_p = -1**, **repetition_penalty = -1**, and no attachments. Enable **force_regenerate** for a fresh request. The node now includes the provider's bounded JSON error message with the submitted key redacted, including errors returned inside HTTP 200 responses. Check credits/key spending limits for HTTP 402; for HTTP 403, follow the provider message about permissions, model access, budgets, or guardrails. See [OpenRouter authentication](https://openrouter.ai/docs/api/reference/authentication) and [errors](https://openrouter.ai/docs/api/reference/errors-and-debugging).
+For **Cerebras**, **Groq**, or another compatible server, select the provider, configure its key/address, and choose a model from its list. Local servers often need no key unless authentication is enabled.
 
-**Free-model 429:** This can come from shared upstream capacity even on your first request. OpenRouter currently advertises 20 requests/minute and 50/day across free models, increasing to 1,000/day after at least $10 in lifetime credit purchases. Failed requests can consume the daily allowance. Check [Activity](https://openrouter.ai/activity) and the authenticated `GET https://openrouter.ai/api/v1/key` response's `free_model_daily_requests` for your actual remaining allowance. Buying credits raises the daily cap; it does not guarantee free-provider capacity. See [limits](https://openrouter.ai/docs/api/reference/limits) and [pricing](https://openrouter.ai/pricing).
+## Tested local models
 
-**Free-model 404:** A listed model can have no eligible provider at request time because of availability, account routing/privacy restrictions, or unsupported attachments. Check the model page's providers and [Privacy settings](https://openrouter.ai/settings/privacy), following the actual error message. A text-only test helps isolate attachment restrictions. The node includes upstream `error.metadata.raw` details and numeric `Retry-After` hints for 429 responses, with no automatic retries. If you still see only the old generic error, restart ComfyUI to load the updated Python code and run once again.
+Tested with **Load CLIP** or **CLIPLoader (GGUF)**, as appropriate:
 
-**Key privacy:** Direct API keys are saved in ComfyUI workflows/history. Use environment variables when sharing workflows. The node sends your prompt and connected media to the selected endpoint. It adds no telemetry, background discovery, model downloads, or automatic request retries. Changing an environment key alone does not clear cached output; enable force_regenerate when needed.
+| Checkpoint | Media notes |
+| --- | --- |
+| `gemma4_e2b_it_bf16` | Images and sampled video frames. |
+| `gemma-4-12B` | Tested checkpoint is text-only. |
+| `Qwen3-4B-abliterated-v2_fp8mixed` | Text-only. |
+| `Qwen-3-VL-4B-Scaled-FP8-v2` | Images and sampled video frames. |
+| `Qwen3-VL-4B-Instruct-abliterated-fp8_scaled` | Images and sampled video frames. |
+| `qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot` | Images and sampled video frames. |
 
-## Image, video, and audio support
-
-The provider **and** chosen model must support your media. A chat-compatible endpoint is not automatically multimodal.
-
-| Provider | Images | Video | Audio inputs |
-| --- | --- | --- | --- |
-| OpenRouter | Yes, with a vision model | Native video or sampled frames | Yes, with an audio model |
-| OpenCode | With a vision-capable Chat Completions model | Sampled frames | No on this node's API path |
-| Cerebras | With a vision model | Sampled frames | No |
-| Groq | With a vision model | Sampled frames | No |
-| LM Studio | With a vision model | Sampled frames | No on this node's API path |
-| Ollama | With a vision model | Sampled frames | No on this node's API path |
-| OpenAI-compatible | Endpoint/model-dependent | Native video or sampled frames | Endpoint/model-dependent |
-| ComfyUI Local | Checkpoint-dependent | Sampled frames | Requires a supported native audio-capable checkpoint |
-
-Frame mode sends visuals **without the soundtrack**. Native video sends the soundtrack when present. For ComfyUI Local, use auto or frames; native video is unsupported. Its supported Gemma audio path accepts up to 30 seconds of combined audio.
-
-Provider limits may be lower than the node's socket counts. Image batches and sampled video frames count as images, too. The node does not silently remove supplied media to fit provider limits. Large media/context settings also use more RAM/VRAM.
-
-## Local models through the CLIP input
-
-Select **ComfyUI Local** in Settings and connect your loaded model to `clip`. The model ID, API-key, and URL fields are not needed on this path. ComfyUI handles loading and memory.
-
-The CLIP input needs a complete language model that can generate text. Ordinary text and vision encoders cannot produce an answer on their own.
-
-| Local model | Images | Videos |
-| --- | --- | --- |
-| `gemma4_e2b_it_bf16` | Yes | Yes, as sampled frames |
-| `gemma-4-12B` | Requires a vision-enabled checkpoint | Requires a vision-enabled checkpoint; sampled frames |
-| `Qwen3-4B-abliterated-v2_fp8mixed` | No; text-only | No; text-only |
-| `Qwen-3-VL-4B-Scaled-FP8-v2` | Yes | Yes, as sampled frames |
-| `Qwen3-VL-4B-Instruct-abliterated-fp8_scaled` | Yes | Yes, as sampled frames |
-| `qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot` | Yes | Yes, as sampled frames |
-
-The image-capable checkpoints listed above include vision weights. The Gemma 12B checkpoint used for text-generation testing is text-only; image/video use needs a vision-enabled checkpoint and a loader that supports it. Local video analysis uses timestamped frames, without the video's soundtrack.
-
-These models have been tested using **Load CLIP** for Safetensors files and **CLIPLoader (GGUF)** for GGUF files. Media support depends on the checkpoint. Larger models and longer prompts need more RAM/VRAM.
+Use a complete generation checkpoint and matching loader. Ordinary CLIP/T5 encoders cannot generate answers. Media support depends on the included weights; larger models and context limits need more RAM/VRAM.
 
 ## Troubleshooting
 
-| Issue | Try this |
+| Problem | Try |
 | --- | --- |
-| Blank answer / no final answer | Increase max_output_tokens or disable thinking if the model supports it. Reasoning can consume the budget. |
-| HTTP 400 | Check model ID, thinking mode, sampling controls, and token limits. |
-| HTTP 401 / 403 | Check your key, permissions, and model access. |
-| HTTP 402 | Check provider credits/billing and the selected model's access requirements. |
-| HTTP 404 | Check base_url and model ID. |
-| HTTP 429 | Check rate limits/quota and wait before retrying. |
-| Connection error / timeout | Start your local server, check its address, or increase timeout_seconds. |
-| Model cannot generate or read media | Choose a complete generation checkpoint and a compatible loader/provider. |
-| Old layout or stale output | Restart ComfyUI, hard-refresh the browser, or enable force_regenerate for a fresh answer. |
+| Empty or incomplete answer | Increase max_output_tokens or disable thinking if supported. |
+| Invalid JSON | Increase the output budget and use a model that follows structured-output instructions. |
+| HTTP 400 | Check model, reasoning, sampling, and token settings; use `-1` sampling defaults. |
+| HTTP 401 / 403 / 402 | Check key, permissions, model access, and account credit. |
+| HTTP 404 / 429 | Check endpoint/model availability or wait for rate limits to reset. |
+| Connection error / timeout | Start the server, check base_url, or increase timeout_seconds. |
+| Media or generation error | Check the model's capabilities, loader, and attachment tags. |
+| Old controls or repeated cached output | Restart ComfyUI, hard-refresh the browser, or enable force_regenerate. |
 
 ## License
 
-Copyright © 2026 [ninjaGurung](https://github.com/ninjaGurung).
-
-This project's code is licensed under the **GNU General Public License v3.0 (GPL-3.0-only)**. See [LICENSE](LICENSE) for the full terms. Model weights and third-party material retain their own licenses.
+Copyright © 2026 [ninjaGurung](https://github.com/ninjaGurung). Code is licensed under [GPL-3.0-only](LICENSE). Model weights and third-party material retain their own licenses.

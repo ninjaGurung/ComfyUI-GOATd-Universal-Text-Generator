@@ -2,6 +2,11 @@
 # GitHub: https://github.com/ninjaGurung
 
 from .llm_node import GOATTextGeneratorSettings, GOATUniversalTextGenerator, UniversalLLM
+from . import models
+from server import PromptServer
+
+if hasattr(PromptServer, "instance"):
+    models.register_routes(PromptServer.instance.routes)
 
 NODE_CLASS_MAPPINGS = {
     "GOATUniversalTextGenerator": GOATUniversalTextGenerator,

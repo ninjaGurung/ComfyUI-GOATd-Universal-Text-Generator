@@ -1,0 +1,312 @@
+{
+  "id": "6b711ca0-528f-4482-b135-11c9e5491049",
+  "revision": 0,
+  "last_node_id": 30,
+  "last_link_id": 61,
+  "nodes": [
+    {
+      "id": 22,
+      "type": "GOATTextGeneratorSettings",
+      "pos": [
+        1398.498014171142,
+        2115.7477678979417
+      ],
+      "size": [
+        469.1595026724493,
+        298
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "settings",
+          "type": "GOAT_TEXT_SETTINGS",
+          "links": [
+            55
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "ninjaGurung/ComfyUI-GOATd-Universal-Text-Generator",
+        "ver": "3b0d1b6df9f05c87cbbd00d39b8963e54df09da5",
+        "Node name for S&R": "GOATTextGeneratorSettings",
+        "goat_advanced_settings": false
+      },
+      "widgets_values": [
+        "OpenCode",
+        "deepseek-v4.1-flash",
+        "",
+        "",
+        "https://opencode.ai/inference/openai/v1",
+        "auto",
+        "auto",
+        2048,
+        0,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        0,
+        0,
+        899419960,
+        "randomize",
+        "",
+        120,
+        false,
+        "auto",
+        0,
+        false,
+        false
+      ],
+      "widgets_values_named": {
+        "provider": "OpenCode",
+        "model": "deepseek-v4.1-flash",
+        "api_key": "",
+        "api_key_env": "",
+        "base_url": "https://opencode.ai/inference/openai/v1",
+        "thinking": "auto",
+        "reasoning_effort": "auto",
+        "max_output_tokens": 2048,
+        "context_window": 0,
+        "temperature": -1,
+        "top_p": -1,
+        "top_k": -1,
+        "min_p": -1,
+        "repetition_penalty": -1,
+        "frequency_penalty": 0,
+        "presence_penalty": 0,
+        "seed": 899419960,
+        "control_after_generate": "randomize",
+        "stop_sequences": "",
+        "timeout_seconds": 120,
+        "force_regenerate": false,
+        "video_mode": "auto",
+        "video_frame_count": 0,
+        "json_output": false,
+        "remember_context": false
+      }
+    },
+    {
+      "id": 23,
+      "type": "GOATUniversalTextGenerator",
+      "pos": [
+        1884.1364449428445,
+        1550.8644348810526
+      ],
+      "size": [
+        574.4209936106499,
+        910
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images.image1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 57
+        },
+        {
+          "name": "images.image2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "videos.video1",
+          "shape": 7,
+          "type": "VIDEO",
+          "link": null
+        },
+        {
+          "name": "audios.audio1",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "clip",
+          "shape": 7,
+          "type": "CLIP",
+          "link": null
+        },
+        {
+          "name": "settings",
+          "type": "GOAT_TEXT_SETTINGS",
+          "link": 55
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": [
+            61
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "ninjaGurung/ComfyUI-GOATd-Universal-Text-Generator",
+        "ver": "3b0d1b6df9f05c87cbbd00d39b8963e54df09da5",
+        "Node name for S&R": "GOATUniversalTextGenerator",
+        "goat_generated_text": ""
+      },
+      "widgets_values": [
+        "",
+        "You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, wording, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.",
+        "Fibo 2",
+        "9ba0571d-36a1-466b-b6a7-15a34b4cfb39",
+        3
+      ],
+      "widgets_values_named": {
+        "prompt_idea": "",
+        "system_prompt": "You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, wording, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.",
+        "prompt_guide": "Fibo 2",
+        "context_session": "9ba0571d-36a1-466b-b6a7-15a34b4cfb39",
+        "context_reset": 3
+      }
+    },
+    {
+      "id": 25,
+      "type": "LoadImage",
+      "pos": [
+        1398.6028100381911,
+        1545.2648618548567
+      ],
+      "size": [
+        450.91272705709775,
+        489.8749273937485
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            57
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.41.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "bridge.jpg",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "bridge.jpg",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 30,
+      "type": "easy showAnything",
+      "pos": [
+        2485.611012794747,
+        1542.0078209510273
+      ],
+      "size": [
+        566.0748112237461,
+        888.6376178006922
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "anything",
+          "shape": 7,
+          "type": "*",
+          "link": 61
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Generation Info",
+      "properties": {
+        "cnr_id": "comfyui-easy-use",
+        "ver": "4ba22aa1ec2dd606995574d93d70c6c8a3744859",
+        "Node name for S&R": "easy showAnything"
+      },
+      "widgets_values": [
+        "{\n  \"provider\": \"OpenCode\",\n  \"model\": \"deepseek-v4.1-flash\",\n  \"endpoint\": \"https://opencode.ai/inference/openai/v1/chat/completions\",\n  \"thinking\": \"auto\",\n  \"reasoning_effort\": \"auto\",\n  \"sampling_requested\": {\n    \"temperature\": -1.0,\n    \"top_p\": -1.0,\n    \"top_k\": -1,\n    \"min_p\": -1.0,\n    \"repetition_penalty\": -1.0,\n    \"frequency_penalty\": 0.0,\n    \"presence_penalty\": 0.0\n  },\n  \"parameters_sent\": {\n    \"seed\": 1496140754,\n    \"max_tokens\": 2048,\n    \"response_format\": {\n      \"type\": \"json_object\"\n    }\n  },\n  \"seed\": {\n    \"requested\": 1496140754,\n    \"sent\": true,\n    \"effective\": null\n  },\n  \"max_output_tokens\": 2048,\n  \"elapsed_seconds\": 15.047,\n  \"prompt_guide\": \"Fibo 2\",\n  \"json_output\": true,\n  \"context\": {\n    \"enabled\": false,\n    \"memory_active\": false,\n    \"limit\": 0,\n    \"used_estimate\": 0,\n    \"usage_is_estimate\": true,\n    \"history_turns_sent\": 0,\n    \"history_turns_remembered\": 0,\n    \"reset_index\": 3,\n    \"turn_in_retained_context\": 1\n  },\n  \"provider_usage\": {\n    \"input_tokens\": 2456,\n    \"output_tokens\": 1574,\n    \"total_tokens\": 4030,\n    \"cached_input_tokens\": 2010,\n    \"reasoning_tokens\": 841\n  },\n  \"finish_reason\": \"stop\",\n  \"media\": {\n    \"image_sockets\": 1,\n    \"video_sockets\": 0,\n    \"audio_sockets\": 0\n  },\n  \"output_chars\": 3223\n}"
+      ],
+      "widgets_values_named": {
+        "text": "{\n  \"provider\": \"OpenCode\",\n  \"model\": \"deepseek-v4.1-flash\",\n  \"endpoint\": \"https://opencode.ai/inference/openai/v1/chat/completions\",\n  \"thinking\": \"auto\",\n  \"reasoning_effort\": \"auto\",\n  \"sampling_requested\": {\n    \"temperature\": -1.0,\n    \"top_p\": -1.0,\n    \"top_k\": -1,\n    \"min_p\": -1.0,\n    \"repetition_penalty\": -1.0,\n    \"frequency_penalty\": 0.0,\n    \"presence_penalty\": 0.0\n  },\n  \"parameters_sent\": {\n    \"seed\": 1496140754,\n    \"max_tokens\": 2048,\n    \"response_format\": {\n      \"type\": \"json_object\"\n    }\n  },\n  \"seed\": {\n    \"requested\": 1496140754,\n    \"sent\": true,\n    \"effective\": null\n  },\n  \"max_output_tokens\": 2048,\n  \"elapsed_seconds\": 15.047,\n  \"prompt_guide\": \"Fibo 2\",\n  \"json_output\": true,\n  \"context\": {\n    \"enabled\": false,\n    \"memory_active\": false,\n    \"limit\": 0,\n    \"used_estimate\": 0,\n    \"usage_is_estimate\": true,\n    \"history_turns_sent\": 0,\n    \"history_turns_remembered\": 0,\n    \"reset_index\": 3,\n    \"turn_in_retained_context\": 1\n  },\n  \"provider_usage\": {\n    \"input_tokens\": 2456,\n    \"output_tokens\": 1574,\n    \"total_tokens\": 4030,\n    \"cached_input_tokens\": 2010,\n    \"reasoning_tokens\": 841\n  },\n  \"finish_reason\": \"stop\",\n  \"media\": {\n    \"image_sockets\": 1,\n    \"video_sockets\": 0,\n    \"audio_sockets\": 0\n  },\n  \"output_chars\": 3223\n}"
+      }
+    }
+  ],
+  "links": [
+    [
+      61,
+      23,
+      1,
+      30,
+      0,
+      "STRING"
+    ],
+    [
+      57,
+      25,
+      0,
+      23,
+      0,
+      "IMAGE"
+    ],
+    [
+      55,
+      22,
+      0,
+      23,
+      5,
+      "GOAT_TEXT_SETTINGS"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7627768444385503,
+      "offset": [
+        337.76470526927733,
+        -1175.4159789422313
+      ]
+    },
+    "workflowRendererVersion": "LG",
+    "ue_links": [],
+    "frontendVersion": "1.57.1",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4,
+  "seed_widgets": {
+    "22": 16
+  }
+}

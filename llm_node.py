@@ -1,7 +1,12 @@
 # Author: ninjaGurung
 # GitHub: https://github.com/ninjaGurung
 
+import json
 import os
+from collections import OrderedDict
+from hashlib import sha256
+from threading import Lock
+from time import monotonic
 from urllib.parse import urlsplit
 
 import requests
@@ -19,10 +24,109 @@ PROVIDERS = {
     "Cerebras": ("https://api.cerebras.ai/v1", "CEREBRAS_API_KEY"),
     "LM Studio": ("http://127.0.0.1:1234", "LM_STUDIO_API_KEY"),
     "Ollama": ("http://127.0.0.1:11434", "OLLAMA_API_KEY"),
-    "OpenAI-compatible": ("", "OPENAI_API_KEY"),
+    "OpenAI-compatible": ("https://api.openai.com/v1", "OPENAI_API_KEY"),
     "Groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
     "OpenCode": ("https://opencode.ai/inference/openai/v1", "OPENCODE_API_KEY"),
 }
+
+
+def _context_tokens(text):
+    return (len(text.encode("utf-8")) + 3) // 4
+
+
+def _transcript(history):
+    return "\n\n".join(f"{message['role'].capitalize()}: {message['content']}" for message in history)
+
+
+class _ConversationMemory:
+    def __init__(self):
+        self.sessions = OrderedDict()
+        self.lock = Lock()
+
+    def history(self, session, identity, reset, limit, system, prompt):
+        with self.lock:
+            now = monotonic()
+            for key, value in list(self.sessions.items()):
+                if now - value[0] > 3600:
+                    del self.sessions[key]
+            state = self.sessions.pop(session, None)
+            history = list(state[3]) if state and state[1:3] == (identity, reset) else []
+            budget = max(0, limit - _context_tokens(system + prompt))
+            while history and sum(_context_tokens(item["content"]) + 4 for item in history) > budget:
+                del history[:2]
+            self.sessions[session] = (now, identity, reset, history)
+            self._trim()
+            return history
+
+    def remember(self, session, identity, reset, history, limit, system, prompt, answer):
+        history = history + [{"role": "user", "content": prompt}, {"role": "assistant", "content": answer}]
+        budget = max(0, min(limit - _context_tokens(system), 65536))
+        while history and sum(_context_tokens(item["content"]) + 4 for item in history) > budget:
+            del history[:2]
+        with self.lock:
+            state = self.sessions.get(session)
+            if state and state[1:3] == (identity, reset):
+                self.sessions[session] = (monotonic(), identity, reset, history)
+                self.sessions.move_to_end(session)
+                self._trim()
+        return _context_tokens(system) + sum(_context_tokens(item["content"]) + 4 for item in history)
+
+    def discard(self, session):
+        with self.lock:
+            self.sessions.pop(session, None)
+
+    def turn_count(self, session, identity, reset):
+        with self.lock:
+            state = self.sessions.get(session)
+            return len(state[3]) // 2 if state and state[1:3] == (identity, reset) else 0
+
+    def _trim(self):
+        while len(self.sessions) > 64 or sum(len(item["content"].encode("utf-8")) for state in self.sessions.values() for item in state[3]) > 4 * 1024 * 1024:
+            self.sessions.popitem(last=False)
+
+
+_CONTEXT_MEMORY = _ConversationMemory()
+
+
+def _reject_json_constant(value):
+    raise ValueError("Invalid JSON constant")
+
+
+def _validate_json(text):
+    try:
+        value = json.loads(text, parse_constant=_reject_json_constant)
+        if not isinstance(value, dict):
+            raise ValueError("Expected a JSON object")
+    except ValueError:
+        raise RuntimeError("LLM returned an invalid JSON object. Increase max_output_tokens, choose a JSON-capable model, or disable json_output.") from None
+    return text
+
+
+def _provider_metadata(provider, result):
+    if provider == "Ollama":
+        usage = {"input_tokens": result.get("prompt_eval_count"), "output_tokens": result.get("eval_count"), "cached_input_tokens": result.get("prompt_eval_cached_count")}
+        finish_reason = result.get("done_reason")
+    elif provider == "LM Studio":
+        stats = result.get("stats", {})
+        stats = stats if isinstance(stats, dict) else {}
+        usage = {"input_tokens": stats.get("input_tokens"), "output_tokens": stats.get("total_output_tokens"), "reasoning_tokens": stats.get("reasoning_output_tokens")}
+        finish_reason = None
+    else:
+        raw = result.get("usage", {})
+        raw = raw if isinstance(raw, dict) else {}
+        usage = {"input_tokens": raw.get("prompt_tokens", raw.get("input_tokens")), "output_tokens": raw.get("completion_tokens", raw.get("output_tokens")), "total_tokens": raw.get("total_tokens")}
+        for source, name in (("prompt_tokens_details", "cached_tokens"), ("completion_tokens_details", "reasoning_tokens")):
+            details = raw.get(source)
+            if isinstance(details, dict):
+                usage["cached_input_tokens" if name == "cached_tokens" else name] = details.get(name)
+        choices = result.get("choices")
+        finish_reason = choices[0].get("finish_reason") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
+    usage = {name: value for name, value in usage.items() if isinstance(value, int) and not isinstance(value, bool) and value >= 0}
+    if "total_tokens" not in usage and "input_tokens" in usage and "output_tokens" in usage:
+        usage["total_tokens"] = usage["input_tokens"] + usage["output_tokens"]
+    if finish_reason not in ("stop", "length", "content_filter", "tool_calls", "function_call", "eos_token", "max_tokens", "stop_sequence", "end_turn", "cancelled"):
+        finish_reason = None
+    return {"provider_usage": usage or None, "finish_reason": finish_reason}
 
 
 def _endpoint(provider, base_url):
@@ -181,14 +285,14 @@ class UniversalLLM(io.ComfyNode):
                 io.Combo.Input("provider", options=[*PROVIDERS, "ComfyUI Local"], default="OpenRouter"),
                 io.String.Input("model", default="", tooltip="Model ID from your provider or local server. ComfyUI Local uses the connected CLIP model instead. Media inputs require a compatible multimodal model."),
                 io.String.Input("prompt_idea", multiline=True, default="", dynamic_prompts=False, tooltip="Reference attachments by socket name: @image1, @video1, @audio1. All connected media are sent."),
-                io.String.Input("system_prompt", multiline=True, default="You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, wording, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.", dynamic_prompts=False, tooltip="System instructions. Attachment tags can also be used here."),
+                io.String.Input("system_prompt", multiline=True, default="You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, exact quoted text, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.", dynamic_prompts=False, tooltip="System instructions. Attachment tags can also be used here."),
                 io.String.Input("api_key", optional=True, default="", tooltip="Bearer token; the node adds Authorization: Bearer automatically. For OpenCode, enter the service account key (oc_sk_...), rather than your other OpenCode API key. Direct keys are saved in workflows. Leave blank to use an environment variable; local servers usually need no key."),
                 io.String.Input("api_key_env", optional=True, default="", tooltip="Environment variable name. Blank uses OPENROUTER_API_KEY, CEREBRAS_API_KEY, LM_STUDIO_API_KEY, OLLAMA_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, or OPENCODE_API_KEY."),
                 io.String.Input("base_url", optional=True, default="", tooltip="Blank uses the provider default. Custom OpenAI-compatible servers require a URL including the API prefix, e.g. http://localhost:8080/v1. Full endpoint URLs also work."),
                 io.Combo.Input("thinking", optional=True, options=["auto", "enabled", "disabled"], default="auto", tooltip="Auto uses the model default. Requires model support. Cerebras GPT-OSS disabled uses low effort with hidden reasoning; it cannot turn reasoning off. Groq GPT-OSS always reasons: use auto/enabled, never disabled. Groq Qwen3 supports disabled; unsupported models omit thinking controls. OpenCode uses model-default thinking."),
                 io.Combo.Input("reasoning_effort", optional=True, options=["auto", "low", "medium", "high"], default="auto", tooltip="Used when thinking is enabled. Groq low/medium/high apply to GPT-OSS 20B/120B and Qwen3.8 27B; other Qwen3 models use their default effort."),
                 io.Int.Input("max_output_tokens", optional=True, default=1024, min=1, max=2147483647, tooltip="Generation budget. Reasoning may consume part of this budget."),
-                io.Int.Input("context_window", optional=True, default=0, min=0, max=2147483647, tooltip="LM Studio and Ollama only; 0 uses the server default. Hosted providers control their context limits."),
+                io.Int.Input("context_window", optional=True, default=0, min=0, max=2147483647, tooltip="0 generates without conversation memory. Positive values enable bounded text history in the GOAT'd generator. Token usage is estimated; media and model tokenization may differ. LM Studio/Ollama also receive this context limit."),
                 io.Float.Input("temperature", optional=True, default=0.7, min=-1.0, max=2.0, step=0.05, tooltip="Higher is more varied; 0 is focused. -1 uses the provider default."),
                 io.Float.Input("top_p", optional=True, default=-1.0, min=-1.0, max=1.0, step=0.05, tooltip="Nucleus sampling. -1 uses the provider default."),
                 io.Int.Input("top_k", optional=True, default=-1, min=-1, max=2147483647, tooltip="OpenRouter, LM Studio, Ollama, ComfyUI Local. -1 uses the provider default."),
@@ -206,6 +310,7 @@ class UniversalLLM(io.ComfyNode):
                 io.Autogrow.Input("videos", template=io.Autogrow.TemplateNames(io.Video.Input("video"), names=[f"video{i}" for i in range(1, 5)], min=0), optional=True, tooltip="Connect up to 4 VIDEO sockets. Reference them with @video1, @video2, etc."),
                 io.Autogrow.Input("audios", template=io.Autogrow.TemplateNames(io.Audio.Input("audio"), names=[f"audio{i}" for i in range(1, 7)], min=0), optional=True, tooltip="Connect up to 6 AUDIO sockets. Reference each socket's complete batch with @audio1, @audio2, etc. Requires OpenRouter, a compatible custom server, or an audio-capable ComfyUI Local model."),
                 io.Clip.Input("clip", optional=True, tooltip="For ComfyUI Local: connect a generation-capable model from Load CLIP or a compatible GGUF loader. Standard CLIP and encoder-only T5 cannot generate text."),
+                io.Boolean.Input("json_output", optional=True, default=False, tooltip="Request a JSON object and validate the returned text. Requires model/provider support. ComfyUI Local and LM Studio native use prompt instructions without constrained decoding."),
             ],
             outputs=[io.String.Output("text", display_name="text")],
         )
@@ -224,13 +329,20 @@ class UniversalLLM(io.ComfyNode):
         return io.NodeOutput(text, ui=ui.PreviewText(text))
 
     @classmethod
-    def generate(cls, provider, model, prompt_idea, system_prompt, api_key="", api_key_env="", base_url="", thinking="auto", reasoning_effort="auto", max_output_tokens=1024, context_window=0, temperature=0.7, top_p=-1.0, top_k=-1, min_p=-1.0, repetition_penalty=-1.0, frequency_penalty=0.0, presence_penalty=0.0, seed=-1, stop_sequences="", timeout_seconds=120, force_regenerate=False, video_mode="auto", video_frame_count=0, images=None, videos=None, audios=None, clip=None):
+    def generate(cls, provider, model, prompt_idea, system_prompt, api_key="", api_key_env="", base_url="", thinking="auto", reasoning_effort="auto", max_output_tokens=1024, context_window=0, temperature=0.7, top_p=-1.0, top_k=-1, min_p=-1.0, repetition_penalty=-1.0, frequency_penalty=0.0, presence_penalty=0.0, seed=-1, stop_sequences="", timeout_seconds=120, force_regenerate=False, video_mode="auto", video_frame_count=0, images=None, videos=None, audios=None, clip=None, history=None, json_output=False, _metadata=None):
         if provider not in PROVIDERS and provider != "ComfyUI Local":
             raise ValueError("Choose a supported LLM provider.")
         if thinking not in ("auto", "enabled", "disabled") or reasoning_effort not in ("auto", "low", "medium", "high"):
             raise ValueError("Choose a supported thinking mode and reasoning effort.")
+        if _metadata is not None:
+            _metadata.update(endpoint=None, parameters_sent=None, provider_usage=None, finish_reason=None)
+        if json_output:
+            system_prompt += '\n\nJSON output is enabled. This output-format requirement overrides conflicting format instructions above: return only one valid JSON object, without Markdown fences or commentary. Follow any requested JSON structure; otherwise place the generated text in a "prompt" string field.'
         if provider == "ComfyUI Local":
-            return (generate_local(clip, prompt_idea, system_prompt, thinking, max_output_tokens, temperature, top_p, top_k, min_p, repetition_penalty, presence_penalty, seed, stop_sequences, images, videos, audios, video_mode, video_frame_count),)
+            if history:
+                prompt_idea = _transcript(history).replace("@", "＠") + "\n\nUser: " + prompt_idea
+            text = generate_local(clip, prompt_idea, system_prompt, thinking, max_output_tokens, temperature, top_p, top_k, min_p, repetition_penalty, presence_penalty, seed, stop_sequences, images, videos, audios, video_mode, video_frame_count)
+            return (_validate_json(text) if json_output else text,)
         if not model.strip():
             raise ValueError("Enter a model name from your provider or local server.")
         endpoint = _endpoint(provider, base_url)
@@ -244,7 +356,27 @@ class UniversalLLM(io.ComfyNode):
         if key:
             headers["Authorization"] = "Bearer " + key
         body = _payload(provider, model.strip(), prompt_idea, system_prompt, thinking, reasoning_effort, max_output_tokens, context_window, temperature, top_p, top_k, min_p, repetition_penalty, frequency_penalty, presence_penalty, seed, stop_sequences)
+        if json_output:
+            if provider == "Ollama":
+                body["format"] = "json"
+            elif provider != "LM Studio":
+                body["response_format"] = {"type": "json_object"}
+        if _metadata is not None:
+            parameter_names = ("temperature", "top_p", "top_k", "min_p", "repetition_penalty", "repeat_penalty", "frequency_penalty", "presence_penalty", "seed", "max_tokens", "max_completion_tokens", "max_output_tokens", "context_length", "reasoning_effort", "reasoning_format", "reasoning", "include_reasoning", "think", "format", "response_format")
+            parameters = {name: body[name] for name in parameter_names if name in body}
+            if provider == "Ollama":
+                parameters["options"] = {name: value for name, value in body["options"].items() if name != "stop"}
+            _metadata.update(endpoint=endpoint, parameters_sent=parameters)
         add_media(body, provider, prompt_idea, system_prompt, images, videos, audios, video_mode, video_frame_count)
+        if history:
+            if provider == "LM Studio":
+                prefix = _transcript(history) + "\n\nUser: "
+                if isinstance(body["input"], str):
+                    body["input"] = prefix + body["input"]
+                else:
+                    body["input"].insert(0, {"type": "text", "content": prefix})
+            else:
+                body["messages"][-1:-1] = history
         try:
             # Explicit auth prevents Requests from replacing these headers with .netrc credentials.
             response = requests.post(endpoint, headers=headers, json=body, timeout=timeout_seconds, allow_redirects=False, auth=lambda request: request)
@@ -283,7 +415,12 @@ class UniversalLLM(io.ComfyNode):
         if isinstance(result, dict) and "error" in result:
             detail = _error_detail(result, key)
             raise RuntimeError(f"LLM server reported an error. {detail or 'Check the model, credentials, and settings.'}")
-        return (_answer(provider, result),)
+        text = _answer(provider, result)
+        if json_output:
+            text = _validate_json(text)
+        if _metadata is not None:
+            _metadata.update(_provider_metadata(provider, result))
+        return (text,)
 
 
 TEXT_SETTINGS = io.Custom("GOAT_TEXT_SETTINGS")
@@ -298,6 +435,7 @@ class GOATTextGeneratorSettings(io.ComfyNode):
         for field in fields:
             if field.id in defaults:
                 field.default = defaults[field.id]
+        fields.append(io.Boolean.Input("remember_context", display_name="Remember context", optional=True, default=False, tooltip="Remember previous text generations. Enabling starts at 8192 tokens; context_window remains editable. Disabling uses 0 and clears history on the next generation."))
         return io.Schema(
             node_id="GOATTextGeneratorSettings",
             display_name="GOAT'd Text Generator Settings 🐐",
@@ -314,7 +452,16 @@ class GOATTextGeneratorSettings(io.ComfyNode):
     @classmethod
     def execute(cls, **kwargs):
         fields = cls.define_schema().inputs
-        settings = {field.id: kwargs.get(field.id, field.default) for field in fields}
+        provider = kwargs.get("provider", "ComfyUI Local")
+        defaults = {} if provider == "ComfyUI Local" else {"thinking": "auto", "temperature": -1.0, "top_p": -1.0, "top_k": -1, "min_p": -1.0, "repetition_penalty": -1.0}
+        settings = {field.id: kwargs.get(field.id, defaults.get(field.id, field.default)) for field in fields if field.id != "remember_context"}
+        remember_context = kwargs.get("remember_context", settings["context_window"] > 0)
+        if not isinstance(remember_context, bool):
+            raise ValueError("remember_context must be a boolean.")
+        if not remember_context:
+            settings["context_window"] = 0
+        elif settings["context_window"] == 0:
+            settings["context_window"] = 8192
         return io.NodeOutput(settings)
 
 
@@ -326,7 +473,7 @@ class GOATUniversalTextGenerator(io.ComfyNode):
             node_id="GOATUniversalTextGenerator",
             display_name="GOAT'd Text Generator 🐐",
             category="LLM/GOAT'd",
-            description="Turn a prompt idea into text using your selected guide and system prompt. Generated text appears on this node and remains available as a STRING output.",
+            description="Turn a prompt idea into text using your selected guide and system prompt. Outputs generated text and a JSON info string for text viewer nodes.",
             search_aliases=["universal llm", "openrouter", "opencode", "cerebras", "ollama", "lm studio", "language model"],
             is_output_node=True,
             inputs=[
@@ -338,19 +485,21 @@ class GOATUniversalTextGenerator(io.ComfyNode):
                 fields["audios"],
                 fields["clip"],
                 TEXT_SETTINGS.Input("settings"),
+                io.String.Input("context_session", optional=True, default="", dynamic_prompts=False),
+                io.Int.Input("context_reset", optional=True, default=0, min=0, max=2147483647),
             ],
-            outputs=[io.String.Output("text", display_name="text")],
+            outputs=[io.String.Output("text", display_name="text"), io.String.Output("info", display_name="info")],
         )
 
     @classmethod
     def fingerprint_inputs(cls, settings=None, **kwargs):
-        return float("nan") if isinstance(settings, dict) and settings.get("force_regenerate", False) else ""
+        return float("nan") if isinstance(settings, dict) and (settings.get("force_regenerate", False) or settings.get("context_window", 0) > 0) else ""
 
     @classmethod
-    def execute(cls, prompt_idea, system_prompt, prompt_guide, settings, clip=None, images=None, videos=None, audios=None):
+    def execute(cls, prompt_idea, system_prompt, prompt_guide, settings, clip=None, images=None, videos=None, audios=None, context_session="", context_reset=0):
         if not isinstance(settings, dict):
             raise ValueError("Connect GOAT'd Text Generator Settings 🐐 to settings.")
-        fields = GOATTextGeneratorSettings.define_schema().inputs
+        fields = [field for field in GOATTextGeneratorSettings.define_schema().inputs if field.id != "remember_context"]
         settings_fields = {field.id for field in fields}
         if set(settings) != settings_fields:
             raise ValueError("Reconnect Text Generator Settings; its settings data is incomplete or incompatible.")
@@ -367,10 +516,63 @@ class GOATUniversalTextGenerator(io.ComfyNode):
                 valid = isinstance(value, str)
             if not valid:
                 raise ValueError(f"Settings value {field.id} has an invalid type. Reconnect Text Generator Settings.")
+        system = combine_system_prompt(system_prompt, prompt_guide, reference_names=tuple(name for group in (images, videos, audios) for name, value in (group or {}).items() if value is not None), json_output=settings.get("json_output", False))
+        limit = max(0, settings["context_window"])
+        if not isinstance(context_session, str) or len(context_session) > 128:
+            raise ValueError("Invalid conversation session. Reload the generator node.")
+        if not isinstance(context_reset, int) or isinstance(context_reset, bool):
+            raise ValueError("Invalid conversation reset value. Reload the generator node.")
+        identity = sha256(repr((settings["provider"], settings["model"], settings["base_url"], settings.get("json_output", False), system, id(clip) if clip is not None else None)).encode("utf-8")).hexdigest()
+        history = []
+        if context_session:
+            if limit:
+                history = _CONTEXT_MEMORY.history(context_session, identity, context_reset, limit, system, prompt_idea)
+            else:
+                _CONTEXT_MEMORY.discard(context_session)
+        metadata = {}
+        started = monotonic()
         text, = UniversalLLM.generate(
             **settings,
             prompt_idea=prompt_idea,
-            system_prompt=combine_system_prompt(system_prompt, prompt_guide, reference_names=tuple(name for group in (images, videos, audios) for name, value in (group or {}).items() if value is not None)),
+            system_prompt=system,
             clip=clip, images=images, videos=videos, audios=audios,
+            history=history,
+            _metadata=metadata,
         )
-        return io.NodeOutput(text, ui=ui.PreviewText(text))
+        elapsed = monotonic() - started
+        used = _context_tokens(system + prompt_idea + text)
+        if limit and context_session:
+            used = _CONTEXT_MEMORY.remember(context_session, identity, context_reset, history, limit, system, prompt_idea, text)
+        provider = settings["provider"]
+        seed = settings.get("seed", -1)
+        info = {
+            "provider": provider,
+            "model": settings["model"] if provider != "ComfyUI Local" else "connected CLIP",
+            "endpoint": metadata.get("endpoint"),
+            "thinking": settings.get("thinking"),
+            "reasoning_effort": settings.get("reasoning_effort"),
+            "sampling_requested": {name: settings.get(name) for name in ("temperature", "top_p", "top_k", "min_p", "repetition_penalty", "frequency_penalty", "presence_penalty")},
+            "parameters_sent": metadata.get("parameters_sent"),
+            "seed": {"requested": seed, "sent": seed >= 0 and provider != "LM Studio", "effective": seed if seed >= 0 and provider == "ComfyUI Local" else None},
+            "max_output_tokens": settings["max_output_tokens"],
+            "elapsed_seconds": round(elapsed, 4),
+            "prompt_guide": prompt_guide,
+            "json_output": settings.get("json_output", False),
+            "context": {
+                "enabled": bool(limit),
+                "memory_active": bool(limit and context_session),
+                "limit": limit,
+                "used_estimate": used if limit else 0,
+                "usage_is_estimate": True,
+                "history_turns_sent": len(history) // 2,
+                "history_turns_remembered": _CONTEXT_MEMORY.turn_count(context_session, identity, context_reset) if limit and context_session else 0,
+                "reset_index": context_reset,
+                "turn_in_retained_context": len(history) // 2 + 1,
+            },
+            "provider_usage": metadata.get("provider_usage"),
+            "finish_reason": metadata.get("finish_reason"),
+            "media": {name: sum(value is not None for value in (group or {}).values()) for name, group in (("image_sockets", images), ("video_sockets", videos), ("audio_sockets", audios))},
+            "output_chars": len(text),
+        }
+        preview = {"text": [text], "context_usage": [{"used": used, "limit": limit, "estimated": True}]} if limit else ui.PreviewText(text)
+        return io.NodeOutput(text, json.dumps(info, ensure_ascii=False, indent=2), ui=preview)

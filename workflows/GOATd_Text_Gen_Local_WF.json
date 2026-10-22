@@ -1,19 +1,19 @@
 {
   "id": "d6940377-304d-4fc1-bbb4-a4d3982454b0",
   "revision": 0,
-  "last_node_id": 16,
-  "last_link_id": 49,
+  "last_node_id": 29,
+  "last_link_id": 60,
   "nodes": [
     {
-      "id": 14,
+      "id": 22,
       "type": "GOATTextGeneratorSettings",
       "pos": [
-        1479.1273941465709,
-        1960.3228262773064
+        1441.7609950030917,
+        2494.62660003229
       ],
       "size": [
-        334.1265625,
-        586
+        403.60953171494964,
+        298
       ],
       "flags": {},
       "order": 0,
@@ -24,84 +24,91 @@
           "name": "settings",
           "type": "GOAT_TEXT_SETTINGS",
           "links": [
-            48
+            55
           ]
         }
       ],
       "properties": {
-        "Node name for S&R": "GOATTextGeneratorSettings"
+        "aux_id": "ninjaGurung/ComfyUI-GOATd-Universal-Text-Generator",
+        "ver": "3b0d1b6df9f05c87cbbd00d39b8963e54df09da5",
+        "Node name for S&R": "GOATTextGeneratorSettings",
+        "goat_advanced_settings": false
       },
       "widgets_values": [
-        "Cerebras",
-        "qwen-3.8-27b",
+        "ComfyUI Local",
         "",
         "",
         "",
-        "disabled",
-        "medium",
-        1024,
+        "",
+        "auto",
+        "auto",
+        2048,
         0,
-        0.7,
-        -1,
-        -1,
-        -1,
-        -1,
+        0.65,
+        0.95,
+        40,
+        0.05,
+        1.1,
         0,
         0,
-        2060367436,
+        1495683904,
         "randomize",
-        "",
+        "<|im_end|>",
         120,
         false,
         "auto",
-        0
+        0,
+        false,
+        false
       ],
       "widgets_values_named": {
-        "provider": "Cerebras",
-        "model": "qwen-3.8-27b",
+        "provider": "ComfyUI Local",
+        "model": "",
         "api_key": "",
         "api_key_env": "",
         "base_url": "",
-        "thinking": "disabled",
-        "reasoning_effort": "medium",
-        "max_output_tokens": 1024,
+        "thinking": "auto",
+        "reasoning_effort": "auto",
+        "max_output_tokens": 2048,
         "context_window": 0,
-        "temperature": 0.7,
-        "top_p": -1,
-        "top_k": -1,
-        "min_p": -1,
-        "repetition_penalty": -1,
+        "temperature": 0.65,
+        "top_p": 0.95,
+        "top_k": 40,
+        "min_p": 0.05,
+        "repetition_penalty": 1.1,
         "frequency_penalty": 0,
         "presence_penalty": 0,
-        "seed": 2060367436,
+        "seed": 1495683904,
         "control_after_generate": "randomize",
-        "stop_sequences": "",
+        "stop_sequences": "<|im_end|>",
         "timeout_seconds": 120,
         "force_regenerate": false,
         "video_mode": "auto",
-        "video_frame_count": 0
+        "video_frame_count": 0,
+        "json_output": false,
+        "remember_context": false
       }
     },
     {
-      "id": 15,
+      "id": 23,
       "type": "GOATUniversalTextGenerator",
       "pos": [
-        1856.677813453762,
-        1654.7841186737567
+        1884.1364449428445,
+        1550.8644348810526
       ],
       "size": [
-        560,
-        910
+        574.4209936106499,
+        1228.458959921349
       ],
       "flags": {},
-      "order": 2,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
           "name": "images.image1",
           "shape": 7,
           "type": "IMAGE",
-          "link": 49
+          "link": 57
         },
         {
           "name": "images.image2",
@@ -111,6 +118,12 @@
         },
         {
           "name": "videos.video1",
+          "shape": 7,
+          "type": "VIDEO",
+          "link": 58
+        },
+        {
+          "name": "videos.video2",
           "shape": 7,
           "type": "VIDEO",
           "link": null
@@ -125,46 +138,57 @@
           "name": "clip",
           "shape": 7,
           "type": "CLIP",
-          "link": null
+          "link": 56
         },
         {
           "name": "settings",
           "type": "GOAT_TEXT_SETTINGS",
-          "link": 48
+          "link": 55
         }
       ],
       "outputs": [
         {
           "name": "text",
           "type": "STRING",
-          "links": null
+          "links": []
+        },
+        {
+          "name": "info",
+          "type": "STRING",
+          "links": []
         }
       ],
       "properties": {
+        "aux_id": "ninjaGurung/ComfyUI-GOATd-Universal-Text-Generator",
+        "ver": "3b0d1b6df9f05c87cbbd00d39b8963e54df09da5",
         "Node name for S&R": "GOATUniversalTextGenerator",
-        "goat_generated_text": "Create a character reference sheet of the woman shown in @image1, presented in a clean 4-slot layout with different angles of the same character. Keep the person’s identity and appearance consistent across all slots: red hair, plaid flannel shirt, denim shorts, black fishnet stockings, black lace-up boots, and holding a white electric guitar. Show the same character from four distinct views, such as front, side, three-quarter, and back, while preserving her clothing, hairstyle, accessories, and recognizable features from @image1. Use a neutral, uniform background suitable for a character sheet, with even lighting and clear visibility of the full body in each slot. Arrange the four panels evenly in a grid, maintaining consistent scale and proportions so the character appears identical in each angle."
+        "goat_generated_text": ""
       },
       "widgets_values": [
-        "Create a character sheet of the person in @image1 in 4 slots showing different angles of the character.",
+        "",
         "You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, wording, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.",
-        "Qwen Image 2.1"
+        "None",
+        "9ba0571d-36a1-466b-b6a7-15a34b4cfb39",
+        3
       ],
       "widgets_values_named": {
-        "prompt_idea": "Create a character sheet of the person in @image1 in 4 slots showing different angles of the character.",
+        "prompt_idea": "",
         "system_prompt": "You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, wording, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.",
-        "prompt_guide": "Qwen Image 2.1"
+        "prompt_guide": "None",
+        "context_session": "9ba0571d-36a1-466b-b6a7-15a34b4cfb39",
+        "context_reset": 3
       }
     },
     {
-      "id": 16,
-      "type": "LoadImage",
+      "id": 24,
+      "type": "CLIPLoader",
       "pos": [
-        1527.7608379340536,
-        1565.3977946408017
+        1464.150853792183,
+        2274.386219229133
       ],
       "size": [
-        282.798828125,
-        314
+        386.19138653689674,
+        120.54017537602726
       ],
       "flags": {},
       "order": 1,
@@ -172,10 +196,50 @@
       "inputs": [],
       "outputs": [
         {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            56
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.41.0",
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "Qwen-3-VL-4B-Scaled-FP8-v2.safetensors",
+        "stable_diffusion",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "Qwen-3-VL-4B-Scaled-FP8-v2.safetensors",
+        "type": "stable_diffusion",
+        "device": "default"
+      }
+    },
+    {
+      "id": 25,
+      "type": "LoadImage",
+      "pos": [
+        1608.3627171021894,
+        1541.3318635974067
+      ],
+      "size": [
+        222.798828125,
+        326
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            49
+            57
           ]
         },
         {
@@ -186,34 +250,88 @@
       ],
       "properties": {
         "cnr_id": "comfy-core",
-        "ver": "0.39.0",
+        "ver": "0.41.0",
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "sampler_compare_HiDreama.jpeg",
+        "011f6cbd-2c52-4305-b42e-a92bdc9ea5ea.jpg",
         "image"
       ],
       "widgets_values_named": {
-        "image": "sampler_compare_HiDreama.jpeg",
+        "image": "011f6cbd-2c52-4305-b42e-a92bdc9ea5ea.jpg",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 27,
+      "type": "LoadVideo",
+      "pos": [
+        1460.7152242918335,
+        1911.7212111384765
+      ],
+      "size": [
+        386.798828125,
+        291.5743408203125
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            58
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.41.0",
+        "Node name for S&R": "LoadVideo"
+      },
+      "widgets_values": [
+        "sample_vid.mp4",
+        "image"
+      ],
+      "widgets_values_named": {
+        "file": "sample_vid.mp4",
         "upload": "image"
       }
     }
   ],
   "links": [
     [
-      49,
-      16,
+      57,
+      25,
       0,
-      15,
+      23,
       0,
       "IMAGE"
     ],
     [
-      48,
-      14,
+      58,
+      27,
       0,
-      15,
+      23,
+      2,
+      "VIDEO"
+    ],
+    [
+      56,
+      24,
+      0,
+      23,
       5,
+      "CLIP"
+    ],
+    [
+      55,
+      22,
+      0,
+      23,
+      6,
       "GOAT_TEXT_SETTINGS"
     ]
   ],
@@ -221,15 +339,15 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 1.0152559799477088,
+      "scale": 0.7627768444385503,
       "offset": [
-        -139.60242821234033,
-        -1386.179387270429
+        58.5218289903301,
+        -1385.1758860062303
       ]
     },
     "workflowRendererVersion": "LG",
     "ue_links": [],
-    "frontendVersion": "1.55.14",
+    "frontendVersion": "1.57.1",
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,
@@ -237,6 +355,6 @@
   },
   "version": 0.4,
   "seed_widgets": {
-    "14": 16
+    "22": 16
   }
 }

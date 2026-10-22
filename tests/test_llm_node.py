@@ -27,6 +27,8 @@ sys.path.insert(0, str(NODE_DIR.parents[1]))
 from comfy_api.latest import InputImpl, Types, io
 from comfy_api.latest import _io
 
+COMFY_DIR = Path(_io.__file__).resolve().parents[2]
+
 spec = importlib.util.spec_from_file_location("universal_llm_test_package", NODE_DIR / "__init__.py", submodule_search_locations=[str(NODE_DIR)])
 package = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = package
@@ -96,7 +98,7 @@ class UniversalLLMTests(unittest.TestCase):
         self.assertFalse(self.post.call_args.kwargs["allow_redirects"])
 
     def test_answer_flows_into_existing_clip_encode(self):
-        source = ast.parse((NODE_DIR.parents[1] / "nodes.py").read_text(encoding="utf-8"))
+        source = ast.parse((COMFY_DIR / "nodes.py").read_text(encoding="utf-8"))
         clip_node = next(item for item in source.body if isinstance(item, ast.ClassDef) and item.name == "CLIPTextEncode")
         encode = next(item for item in clip_node.body if isinstance(item, ast.FunctionDef) and item.name == "encode")
         namespace = {}
@@ -426,10 +428,14 @@ class UniversalLLMTests(unittest.TestCase):
                 self.assertEqual(node_module._endpoint(provider, base), expected)
 
     def test_invalid_urls_never_send_keys(self):
-        for url in ("", "file:///tmp/key", "ftp://example.test", "http://user:secret@example.test/v1", "https://example.test/v1?key=secret", "https://example.test/v1#secret"):
+        for url in ("file:///tmp/key", "ftp://example.test", "http://user:secret@example.test/v1", "https://example.test/v1?key=secret", "https://example.test/v1#secret"):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 self.generate("OpenAI-compatible", base_url=url)
         self.post.assert_not_called()
+
+    def test_openai_compatible_default_url(self):
+        self.generate("OpenAI-compatible")
+        self.assertEqual(self.post.call_args.args[0], "https://api.openai.com/v1/chat/completions")
 
     def test_model_and_provider_validation(self):
         for inputs in ({"model": " "}, {"provider": "Unknown"}, {"thinking": "invalid"}, {"reasoning_effort": "invalid"}):
@@ -501,13 +507,15 @@ class UniversalLLMTests(unittest.TestCase):
         schema = Generator.GET_SCHEMA()
         self.assertEqual(schema.display_name, "GOAT'd Text Generator 🐐")
         self.assertTrue(schema.is_output_node)
-        self.assertEqual([field.id for field in schema.inputs], ["prompt_idea", "system_prompt", "prompt_guide", "images", "videos", "audios", "clip", "settings"])
+        self.assertEqual([field.id for field in schema.inputs], ["prompt_idea", "system_prompt", "prompt_guide", "images", "videos", "audios", "clip", "settings", "context_session", "context_reset"])
         self.assertEqual(next(field for field in schema.inputs if field.id == "prompt_guide").default, "None")
         values = Settings.execute(provider="ComfyUI Local")[0]
         self.assertNotIn("prompt_idea", values)
         self.assertNotIn("clip", values)
         output = Generator.execute("A cabin", "Return a prompt.", "None", values, clip=self.local_clip())
-        self.assertEqual(output.result, ("A local cabin.",))
+        self.assertEqual(output.result[0], "A local cabin.")
+        self.assertEqual(json.loads(output.result[1])["provider"], "ComfyUI Local")
+        self.assertEqual(tuple(Generator.RETURN_NAMES), ("text", "info"))
         self.assertEqual(output.ui.as_dict(), {"text": ("A local cabin.",)})
         self.post.assert_not_called()
         self.assertTrue(math.isnan(Settings.fingerprint_inputs(force_regenerate=True)))
@@ -521,12 +529,25 @@ class UniversalLLMTests(unittest.TestCase):
         values = {**defaults, "thinking": "enabled", "temperature": 0.4, "top_p": 0.8, "top_k": 12, "min_p": 0.02, "repetition_penalty": 1.0}
         for provider in ("ComfyUI Local", "OpenRouter", "Ollama", "ComfyUI Local"):
             values["provider"] = provider
-            self.assertEqual(Settings.execute(**values)[0], values)
+            self.assertEqual(Settings.execute(**values)[0], {name: value for name, value in values.items() if name != "remember_context"})
         legacy = {field.id: field.default for field in UniversalLLM.define_schema().inputs if field.id in ("provider", "top_p")}
         self.assertEqual(legacy["provider"], "OpenRouter")
         self.assertEqual(legacy["top_p"], -1.0)
         saved = {**defaults, "thinking": "auto", "top_p": -1.0, "top_k": -1, "min_p": -1.0, "repetition_penalty": -1.0}
-        self.assertEqual(Settings.execute(**saved)[0], saved)
+        self.assertEqual(Settings.execute(**saved)[0], {name: value for name, value in saved.items() if name != "remember_context"})
+
+    def test_generator_context_uses_real_api_output_and_reset(self):
+        settings = Settings.execute(provider="OpenRouter", model="test/model", api_key="test-secret", context_window=1024)[0]
+        session = "real-api-context-test"
+        self.addCleanup(node_module._CONTEXT_MEMORY.discard, session)
+        output = Generator.execute("A cabin", "Short prompts.", "None", settings, context_session=session)
+        self.assertEqual(output.result[0], "A cinematic cabin.")
+        self.assertTrue(json.loads(output.result[1])["context"]["enabled"])
+        self.assertEqual(output.ui["context_usage"][0]["limit"], 1024)
+        Generator.execute("Add snow", "Short prompts.", "None", settings, context_session=session)
+        self.assertEqual([message["role"] for message in self.body()["messages"]], ["system", "user", "assistant", "user"])
+        Generator.execute("Fresh", "Short prompts.", "None", settings, context_session=session, context_reset=1)
+        self.assertEqual(len(self.body()["messages"]), 2)
 
     def test_guides_preserve_instructions_and_ref2v_dependency(self):
         self.assertEqual(guides_module.combine_system_prompt("Keep this exact.\n", "None"), "Keep this exact.\n")
@@ -904,7 +925,7 @@ class UniversalLLMTests(unittest.TestCase):
             ("z_image.py", "ZImageTokenizer", "qwen3_4b", False),
             ("flux.py", "KleinTokenizer", "qwen3_8b", True),
         ):
-            source = ast.parse((NODE_DIR.parents[1] / "comfy/text_encoders" / filename).read_text(encoding="utf-8"))
+            source = ast.parse((COMFY_DIR / "comfy/text_encoders" / filename).read_text(encoding="utf-8"))
             native_class = next(item for item in source.body if isinstance(item, ast.ClassDef) and item.name == class_name)
             method = next(item for item in native_class.body if isinstance(item, ast.FunctionDef) and item.name == "tokenize_with_weights")
             probe_class = ast.ClassDef(name="TokenizerProbe", bases=[ast.Name(id="BaseTokenizer", ctx=ast.Load())], keywords=[], body=[method], decorator_list=[])
@@ -979,9 +1000,28 @@ class UniversalLLMTests(unittest.TestCase):
                 images={"image1": object(), "image2": None},
                 videos={"video1": object()}, audios={"audio1": object()},
             )
-        combine.assert_called_once_with("System", "None", reference_names=("image1", "video1", "audio1"))
+        combine.assert_called_once_with("System", "None", reference_names=("image1", "video1", "audio1"), json_output=False)
         self.assertEqual(generate.call_args.kwargs["system_prompt"], "Combined system")
         self.assertEqual(result[0], "A cabin")
+
+    def test_fibo_guide_uses_the_settings_output_format(self):
+        for enabled in (False, True):
+            for images in (None, {"image2": object(), "image10": object()}):
+                with self.subTest(json_output=enabled, images=bool(images)):
+                    settings = Settings.execute(provider="ComfyUI Local", json_output=enabled)[0]
+                    answer = '{"short_description":"A cabin"}' if enabled else "A cabin"
+                    with patch.object(UniversalLLM, "generate", return_value=(answer,)) as generate:
+                        result = Generator.execute("A cabin", "Preserve details.", "Fibo 2", settings, images=images)
+                    system = generate.call_args.kwargs["system_prompt"]
+                    self.assertEqual(result[0], answer)
+                    if enabled:
+                        self.assertIn('"short_description"', system)
+                        self.assertIn("VGL JSON object", system)
+                    else:
+                        self.assertIn("Return only plain-language", system)
+                        self.assertNotIn('"short_description"', system)
+                    if images:
+                        self.assertIn("@image10 corresponds to <image_2>", system)
 
     def test_local_empty_and_unfinished_reasoning_cannot_complete_blank(self):
         for answer, message in (("<think>unfinished", "stopped during reasoning"), ("<think>done</think>", "no answer text"), (" \n", "no answer text"), ("STOP later", "no answer text")):
@@ -1028,7 +1068,7 @@ class UniversalLLMTests(unittest.TestCase):
         self.assertEqual(audio.numpy().shape, (1, 1, 160))
 
     def test_local_native_unified_audio_truncation_is_reported(self):
-        source = ast.parse((NODE_DIR.parents[1] / "comfy/text_encoders/gemma4.py").read_text(encoding="utf-8"))
+        source = ast.parse((COMFY_DIR / "comfy/text_encoders/gemma4.py").read_text(encoding="utf-8"))
         native_class = next(item for item in source.body if isinstance(item, ast.ClassDef) and item.name == "Gemma4UnifiedSDTokenizer")
         method = next(item for item in native_class.body if isinstance(item, ast.FunctionDef) and item.name == "_extract_audio_features")
         namespace = {"torch": torch}
@@ -1079,7 +1119,7 @@ class UniversalLLMTests(unittest.TestCase):
         self.assertEqual(kinds, {"text", "image_url", "video_url", "input_audio"})
 
     def gguf_loader_namespace(self, names, **values):
-        source = ast.parse((NODE_DIR.parent / "ComfyUI-GGUF/loader.py").read_text(encoding="utf-8"))
+        source = ast.parse((COMFY_DIR / "custom_nodes/ComfyUI-GGUF/loader.py").read_text(encoding="utf-8"))
         body = []
         found = set()
         for item in source.body:
@@ -1170,7 +1210,7 @@ class UniversalLLMTests(unittest.TestCase):
             namespace["gguf_clip_loader"]("incomplete.gguf")
 
     def test_gemma4_gguf_public_clip_construction_and_generic_loader(self):
-        source = ast.parse((NODE_DIR.parent / "ComfyUI-GGUF/nodes.py").read_text(encoding="utf-8"))
+        source = ast.parse((COMFY_DIR / "custom_nodes/ComfyUI-GGUF/nodes.py").read_text(encoding="utf-8"))
         native_class = next(item for item in source.body if isinstance(item, ast.ClassDef) and item.name == "CLIPLoaderGGUF")
         method = next(item for item in native_class.body if isinstance(item, ast.FunctionDef) and item.name == "load_patcher")
         loaded = SimpleNamespace(patcher="initial_patcher")

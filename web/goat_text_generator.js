@@ -4,6 +4,8 @@
 import { app } from "../../../scripts/app.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
 import { mountTagSuggestions, removeTagSuggestions } from "./tag_suggestions.js";
+import "./settings.js";
+import "./context.js";
 
 const generatorTypes = new Set(["GOATUniversalTextGenerator", "UniversalLLM"]);
 const previewName = "generated_text";

@@ -13,11 +13,15 @@ _GUIDE_FILES = {
     "Seedance 2.5": ("Seedance2.5_PromptGuide.md",),
     "FLUX.2 Klein 9B": ("Flux.2Klein9B_PromptGuide .md",),
     "Krea 2": ("Krea2_PromptGuide.md",),
+    "MOSS Image": ("MossImage_PromptGuide.md",),
+    "Fibo 2": ("Fibo2_PromptGuide.md",),
 }
 
 # Primary sources checked 2026-10-10. These are paraphrased writing aids,
 # not generation settings or claims that connected LLMs implement image/video models.
 GUIDE_SOURCES = {
+    "MOSS Image": ("https://github.com/OpenMOSS/MOSS-Image/blob/main/USERGUIDE.md", "https://github.com/OpenMOSS/MOSS-Image/tree/main/skills/moss-image-prompt-enhancer"),
+    "Fibo 2": ("https://huggingface.co/briaai/Fibo-2.0-dev", "https://huggingface.co/briaai/Fibo-2.0-edit-turbo", "https://github.com/Bria-AI/vgl/tree/dev/src/bria_vgl/dialects/thales"),
     "GPT Image 2.5": ("https://developers.openai.com/api/docs/guides/image-prompting",),
     "Nano Banana Pro": ("https://blog.google/products-and-platforms/products/gemini/prompting-tips-nano-banana-pro/",),
 }
@@ -33,7 +37,7 @@ GUIDE_OPTIONS = sorted(
 )
 
 
-def combine_system_prompt(system_prompt, guide_name, reference_names=()):
+def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_output=False):
     if guide_name == "None":
         return system_prompt
     if guide_name in _GUIDE_FILES:
@@ -47,6 +51,15 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=()):
             guide += "\n\nReference tag mapping: @imageN corresponds to image N; for a single supplied image, use the input image as specified in the guide."
         elif guide_name == "Krea 2":
             guide += "\n\nReference tag mapping: @imageN corresponds to @reference_N for subject or structure references. Bind @style_reference to the specific supplied image used for style, keeping its original numbered socket association explicit."
+        elif guide_name == "Fibo 2":
+            if not json_output:
+                guide = guide.split("\n## VGL JSON output\n", 1)[0]
+            image_names = [name for name in reference_names if name.startswith("image")]
+            guide += "\n\nFibo reference order follows the images supplied to the downstream Fibo node. Keep that order identical to the references here. "
+            if len(image_names) > 1:
+                guide += "Multi-reference tag mapping: " + ", ".join(f"@{name} corresponds to <image_{index}>" for index, name in enumerate(image_names, 1)) + ". Use these slot tokens in the edit instruction" + (" field edit_instruction." if json_output else ".")
+        elif guide_name == "MOSS Image":
+            guide += "\n\nConnected images are visual evidence for the text-writing LLM. Describe requested observable details in words; do not claim that MOSS Image consumes these attachments or preserves their identity through native image editing."
         else:
             guide += "\n\nReference tag mapping: @imageN corresponds to @ImageN, @videoN to @VideoN, and @audioN to @AudioN."
         guide += " Preserve the numbered association and the user's stated reference purpose; do not infer first/last-frame roles from the number of images. Only use references supplied by the user; examples in this guide are examples, not attached assets."
@@ -64,7 +77,16 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=()):
     if not reference_names and guide_name in ("MiniMax H3 - T2V / FL2V", "MiniMax H3 - Ref2V"):
         references += " Use text-only T2VA: begin with integrated_multimodal_description, then overall_soundscape and non_diegetic_music. Omit the image-alignment instruction."
     mode = ""
-    if guide_name in ("Qwen Image 2.1", "FLUX.2 Klein 9B", "Krea 2"):
+    if guide_name == "MOSS Image":
+        mode = "T2I. Write a still-image caption or the requested MOSS layout JSON. Connected images may inform the caption; do not add video timelines, audio fields, or image-editing claims."
+    elif guide_name == "Fibo 2":
+        if any(name.startswith("image") for name in reference_names):
+            mode = "I2I / Ref2I. " + ("Return one final-state VGL JSON object with edit_instruction. " if json_output else "Return only plain-language edit instructions, without JSON, field labels, or Markdown fences. Rewrite the rough Prompt Idea as a clear, actionable edit instruction. ")
+            mode += "Preserve unrequested source details. For one image, write the change directly without a source label; for multiple images use the supplied ordered slot mapping in the edit instruction."
+        else:
+            mode = "T2I with Fibo 2 Dev. " + ("Return one VGL JSON object without edit_instruction. " if json_output else "Return only plain-language image prompt text, without JSON, field labels, or Markdown fences. Rewrite the rough Prompt Idea into a cohesive, finished image prompt using its supplied details. ")
+            mode += "Edit Turbo is documented for editing. Do not invent image references."
+    elif guide_name in ("Qwen Image 2.1", "FLUX.2 Klein 9B", "Krea 2"):
         if any(name.startswith("image") for name in reference_names):
             mode = (
                 "I2I / Ref2I. Connected images are source references, even if the idea says create or does not name a tag. "
@@ -90,11 +112,14 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=()):
             f"\nGeneration mode for this request: {mode} "
             "Return only the finished generation prompt. Do not output mode labels, guide headings, or rule explanations.\n"
         )
+    preservation = "Preserve explicitly supplied details, names, wording, and reference associations. "
+    if guide_name == "Fibo 2" and not json_output:
+        preservation = "Preserve supplied facts, proper names, exact visible text, numbers, constraints, and reference associations. Rephrase descriptive wording to improve clarity and flow without inventing content. "
     return (
         f"{system_prompt}\n\nSelected prompt writing guide: {guide_name}\n{guide}\n\n"
         f"{references}\n{mode}"
         "Apply this guide together with the user's system instructions and prompt idea. "
-        "Preserve explicitly supplied details, names, wording, and reference associations. "
+        f"{preservation}"
         "When guide examples or defaults conflict with explicit user instructions, follow the user instructions. "
         "Return the requested prompt output, without guide explanations or source citations unless requested."
     )
