@@ -82,7 +82,8 @@ def generate_local(clip, prompt_idea, system_prompt, thinking, max_output_tokens
     stops = parse_stop_sequences(stop_sequences)
     prompt, image, audio, source_images = _media(prompt_idea, system_prompt, images, videos, audios, video_mode, video_frame_count)
     # Qwen accepts original image sizes; Gemma uses the padded batch.
-    tokens = clip.tokenize(prompt, image=image, images=source_images, audio=audio, video=None, skip_template=False, min_length=1, thinking=thinking == "enabled", system_prompt=system_prompt)
+    tokenizer_options = {} if thinking == "auto" else {"thinking": thinking == "enabled"}
+    tokens = clip.tokenize(prompt, image=image, images=source_images, audio=audio, video=None, skip_template=False, min_length=1, system_prompt=system_prompt, **tokenizer_options)
     if {"qwen3_4b", "qwen3_8b"}.intersection(tokens) and thinking in ("enabled", "disabled"):
         template = "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
         if thinking == "disabled":

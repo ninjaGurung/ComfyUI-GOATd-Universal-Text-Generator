@@ -2,11 +2,16 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import sys
+from types import ModuleType
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("new_prompt_guides", ROOT / "prompt_guides.py")
+package = ModuleType("new_guides_test_package")
+package.__path__ = [str(ROOT)]
+sys.modules[package.__name__] = package
+spec = importlib.util.spec_from_file_location(package.__name__ + ".prompt_guides", ROOT / "prompt_guides.py")
 guides = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guides)
 

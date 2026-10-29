@@ -963,6 +963,17 @@ class UniversalLLMTests(unittest.TestCase):
         self.assertIs(clip.cond_stage_model, original_model)
         self.assertTrue(clip.is_dynamic())
 
+    def test_local_auto_thinking_preserves_native_tokenizer_default(self):
+        for token_name in ("qwen3_4b", "qwen3_8b", "gemma4"):
+            with self.subTest(tokenizer=token_name):
+                clip = self.local_clip(token_name)
+                self.generate("ComfyUI Local", clip=clip, thinking="auto")
+                self.assertEqual(clip.tokenize.call_count, 1)
+                self.assertNotIn("thinking", clip.tokenize.call_args.kwargs)
+                for thinking, enabled in (("enabled", True), ("disabled", False)):
+                    self.generate("ComfyUI Local", clip=clip, thinking=thinking)
+                    self.assertIs(clip.tokenize.call_args.kwargs["thinking"], enabled)
+
     def test_local_qwen_thinking_templates_preserve_system_prompt(self):
         class BaseTokenizer:
             def tokenize_with_weights(self, text, **kwargs):

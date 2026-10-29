@@ -2,11 +2,14 @@
 # GitHub: https://github.com/ninjaGurung
 from pathlib import Path
 
+from .custom_guides import list_guides, load_guide
+
 
 _GUIDE_FILES = {
     "MiniMax H3 - T2V / FL2V": ("MinimaxH3_T2V_FL2V_PromptGuide.md",),
     "MiniMax H3 - Ref2V": ("MinimaxH3_T2V_FL2V_PromptGuide.md", "MinimaxH3_Ref2V_PromptGuide.md"),
     "MiniMax H3 - Singularity": ("MinimaxH3_Singularity_PromptGuide.md",),
+    "MiniMax H3 - Pika": ("MinimaxH3_Pika_PromptGuide.md",),
     "Qwen Image 2.1": ("QwenImage2.1_PromptGuide.md",),
     "Wan 3.0": ("Wan3.0_PromptGuide.md",),
     "Seedance 2.0": ("Seedance2.0_PromptGuide.md",),
@@ -37,12 +40,19 @@ GUIDE_OPTIONS = sorted(
 )
 
 
+def get_guide_options():
+    return [*GUIDE_OPTIONS, *(guide["value"] for guide in list_guides()["guides"])]
+
+
 def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_output=False):
     if guide_name == "None":
         return system_prompt
+    guide_label = guide_name
     if guide_name in _GUIDE_FILES:
         guide_dir = Path(__file__).parent / "prompt_guides"
         guide = "\n\n".join((guide_dir / filename).read_text(encoding="utf-8-sig") for filename in _GUIDE_FILES[guide_name])
+        if guide_name == "MiniMax H3 - Pika":
+            guide = guide.split("\n## 6. Running the examples with the CLI\n", 1)[0]
         if guide_name.startswith("MiniMax "):
             guide += "\n\nReference tag mapping: @imageN corresponds to <Picture N>, @videoN to <Video N>, and @audioN to <Audio N>."
         elif guide_name == "Qwen Image 2.1":
@@ -65,6 +75,8 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_ou
         guide += " Preserve the numbered association and the user's stated reference purpose; do not infer first/last-frame roles from the number of images. Only use references supplied by the user; examples in this guide are examples, not attached assets."
     elif guide_name in _GUIDES:
         guide = _GUIDES[guide_name]
+    elif isinstance(guide_name, str) and guide_name.startswith("Custom:"):
+        guide_label, guide = load_guide(guide_name)
     else:
         raise ValueError("Unknown prompt guide. Choose an item from the prompt guide dropdown.")
     references = (
@@ -77,7 +89,24 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_ou
     if not reference_names and guide_name in ("MiniMax H3 - T2V / FL2V", "MiniMax H3 - Ref2V"):
         references += " Use text-only T2VA: begin with integrated_multimodal_description, then overall_soundscape and non_diegetic_music. Omit the image-alignment instruction."
     mode = ""
-    if guide_name == "MiniMax H3 - Ref2V" and reference_names:
+    if guide_name == "MiniMax H3 - Pika":
+        if reference_names:
+            mode = (
+                "Choose FL2VA only when the user explicitly assigns first-frame or last-frame roles; never infer those roles from attachment count. "
+                "For FL2VA, put the requested image alignment first, then integrated_multimodal_description, overall_soundscape, non_diegetic_music. "
+                "Otherwise use Ref2VA with these six fields in order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music. "
+                "For Ref2VA use detailed_description instead of integrated_multimodal_description, define each supplied reference's role and preserve its numbered association. "
+                "Sampled video frames remain observations of their <Video N>; do not create extra <Picture N> inputs from them. "
+                "Use audio labels only for connected audio inputs; do not assume sampled videos provide an audio track. "
+            )
+        else:
+            mode = "T2VA. Use these three fields in order: integrated_multimodal_description, overall_soundscape, non_diegetic_music. Omit image alignment and reference-only fields. "
+        mode += "Write scene descriptions in English; preserve dialogue and on-screen text in their intended language. "
+        mode += (
+            "Return one JSON object using the selected mode's field names as top-level keys; put any FL2VA alignment instruction inside integrated_multimodal_description."
+            if json_output else "Return the selected mode's labeled fields without Markdown fences."
+        )
+    elif guide_name == "MiniMax H3 - Ref2V" and reference_names:
         mode = (
             "Ref2V (full-reference mode). Return these six sections in order: "
             "subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music. "
@@ -128,7 +157,7 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_ou
     if guide_name == "Fibo 2" and not json_output:
         preservation = "Preserve supplied facts, proper names, exact visible text, numbers, constraints, and reference associations. Rephrase descriptive wording to improve clarity and flow without inventing content. "
     return (
-        f"{system_prompt}\n\nSelected prompt writing guide: {guide_name}\n{guide}\n\n"
+        f"{system_prompt}\n\nSelected prompt writing guide: {guide_label}\n{guide}\n\n"
         f"{references}\n{mode}"
         "Apply this guide together with the user's system instructions and prompt idea. "
         f"{preservation}"

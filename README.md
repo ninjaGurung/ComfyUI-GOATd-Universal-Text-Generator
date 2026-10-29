@@ -96,6 +96,8 @@ Screenshots may show additional optional preview nodes.
 
 Type `@` in either prompt field to select a connected reference, such as `@image1`. All connected media are sent, including untagged inputs. Remove unused connections; a tag must point to a connected socket.
 
+Suggestions include image thumbnails, video first frames, and audio waveform symbols. Hover or focus a tag to preview its reference. Media without an available preview shows a placeholder.
+
 Media support depends on both provider and model. Video frame mode sends visuals without the soundtrack; native video/audio requires a compatible endpoint and model. ComfyUI Local reads video as sampled frames.
 
 ## Settings fields
@@ -137,7 +139,7 @@ Guides help write prompts for a target image/video model; they do not load it or
 
 | Guide | Use |
 | --- | --- |
-| **MiniMax H3** | T2V / FL2V, Ref2V, and Singularity video prompts. |
+| **MiniMax H3** | T2V / FL2V, Ref2V, Singularity, and Pika video prompts. Pika follows the supplied T2VA, FL2VA, and Ref2VA guidance. |
 | **Seedance 2.0 / 2.5**, **Wan 3.0** | Scene, action, camera, reference, and sound instructions. |
 | **Fibo 2** | Dev generation/editing and Edit Turbo editing. Plain language by default; VGL JSON when json_output is enabled. |
 | **MOSS Image** | Still-image captions, exact visible text, and layout JSON. |
@@ -145,6 +147,10 @@ Guides help write prompts for a target image/video model; they do not load it or
 | **GPT Image 2.5**, **Nano Banana Pro** | Image generation/editing instructions and text requirements. |
 
 State reference roles explicitly, including first/last frames when needed. For Fibo, keep reference order consistent with the downstream image workflow. MOSS references can inform the caption; they do not enable native image editing.
+
+Choose **+ Add a prompt guide** in the guide dropdown to import Markdown, UTF-8/UTF-16 text, DOCX, or a PDF with selectable text. Name the guide and choose no folder, an existing custom folder, or **+ New folder…**. Custom folders include **Rename folder…**; bundled folders stay fixed. Imports are saved as text with a catalog in `prompt_guides/custom/` and appear immediately, including after restarting. Folder renames preserve saved workflow selections. Copy this directory when moving custom guides to another installation.
+
+Uploads are limited to 8 MB and extracted text to 2 million characters; PDFs support up to 200 pages and require PyMuPDF in ComfyUI's Python environment. Legacy `.doc` files must be exported as DOCX or text; scanned PDFs need text extraction first. Importing stays local; selected guide text is included in the prompt sent to your chosen LLM provider.
 
 ## Providers
 

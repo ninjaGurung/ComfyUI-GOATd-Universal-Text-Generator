@@ -1,6 +1,8 @@
 // Author: ninjaGurung
 // GitHub: https://github.com/ninjaGurung
 
+import { resolveMediaPreview, createMediaPreview } from "./media_preview.js";
+
 const suggestionsState = Symbol("goatTagSuggestions");
 let nextListId = 0;
 
@@ -38,6 +40,16 @@ export function mountTagSuggestions(node, widget) {
     }
 
     const doc = textarea.ownerDocument;
+    const view = doc.defaultView;
+    const tooltip = doc.createElement("div");
+    tooltip.id = `goat-tag-preview-${nextListId + 1}`;
+    tooltip.setAttribute("role", "tooltip");
+    Object.assign(tooltip.style, {
+        position: "fixed", zIndex: "10000", display: "none", pointerEvents: "none",
+        padding: "8px", borderRadius: "6px", border: "1px solid var(--border-color, #666)",
+        background: "var(--comfy-input-bg, #222)", color: "var(--input-text, #ddd)",
+        font: "12px/1.4 sans-serif", boxShadow: "0 4px 16px #0006",
+    });
     const popup = doc.createElement("div");
     popup.id = `goat-tag-suggestions-${++nextListId}`;
     popup.setAttribute("role", "listbox");
@@ -76,6 +88,62 @@ export function mountTagSuggestions(node, widget) {
     widget[suggestionsState] = state;
 
     let references = [];
+    let thumbnails = [];
+    let hovered = null;
+    let preview = null;
+    let previewKey = "";
+
+    function hidePreview() {
+        hovered?.label.removeAttribute("aria-describedby");
+        hovered = null;
+        preview?.dispose();
+        preview = null;
+        previewKey = "";
+        tooltip.replaceChildren();
+        tooltip.style.display = "none";
+    }
+
+    function positionPreview() {
+        if (!hovered) return;
+        const rect = hovered.label.getBoundingClientRect();
+        const removeRect = hovered.remove.getBoundingClientRect();
+        const anchorTop = Math.min(rect.top, removeRect.top);
+        const anchorBottom = Math.max(rect.bottom, removeRect.bottom);
+        const bounds = textarea.getBoundingClientRect();
+        if (!hovered.label.isConnected || rect.bottom <= bounds.top || rect.top >= bounds.bottom || rect.right <= bounds.left || rect.left >= bounds.right) {
+            hidePreview();
+            return;
+        }
+        const width = tooltip.offsetWidth;
+        const height = tooltip.offsetHeight;
+        tooltip.style.left = `${Math.max(4, Math.min(rect.left, view.innerWidth - width - 4))}px`;
+        const top = anchorBottom + 8 + height <= view.innerHeight ? anchorBottom + 8 : anchorTop - height - 8;
+        tooltip.style.top = `${Math.max(4, Math.min(top, view.innerHeight - height - 4))}px`;
+    }
+
+    function showPreview(label, tag, remove) {
+        const media = resolveMediaPreview(node, tag);
+        const key = JSON.stringify(media);
+        if (hovered?.label !== label || key !== previewKey) {
+            hidePreview();
+            hovered = { label, tag, remove };
+            previewKey = key;
+            preview = createMediaPreview(doc, media, 160);
+            const caption = doc.createElement("div");
+            caption.textContent = media.title;
+            Object.assign(caption.style, { width: "160px", marginTop: "6px", overflowWrap: "anywhere" });
+            tooltip.append(preview.element, caption);
+            doc.body.appendChild(tooltip);
+            label.setAttribute("aria-describedby", tooltip.id);
+            tooltip.style.display = "block";
+        }
+        positionPreview();
+    }
+
+    function clearThumbnails() {
+        for (const thumbnail of thumbnails) thumbnail.dispose();
+        thumbnails = [];
+    }
 
     function layout() {
         const parent = textarea.parentElement;
@@ -122,6 +190,7 @@ export function mountTagSuggestions(node, widget) {
     }
 
     function decorate(tags) {
+        hidePreview();
         text.replaceChildren();
         references = [];
         let end = 0;
@@ -140,10 +209,10 @@ export function mountTagSuggestions(node, widget) {
             label.textContent = range.text;
             label.setAttribute("role", "button");
             label.tabIndex = 0;
-            label.title = `${present ? "Connected" : "Not connected"}. Click to replace ${range.text}`;
             label.setAttribute("aria-label", `${range.text}, ${present ? "connected" : "not connected"}. Replace reference`);
             Object.assign(label.style, { cursor: "pointer", pointerEvents: "auto" });
             function open() {
+                hidePreview();
                 textarea.focus();
                 textarea.setSelectionRange(range.end, range.end);
                 state.target = range;
@@ -157,7 +226,12 @@ export function mountTagSuggestions(node, widget) {
                 open();
             };
             label.onclick = (event) => event.stopPropagation();
+            label.onpointerenter = () => showPreview(label, range.text, remove);
+            label.onpointerleave = () => { if (doc.activeElement !== label) hidePreview(); };
+            label.onfocus = () => showPreview(label, range.text, remove);
+            label.onblur = hidePreview;
             label.onkeydown = (event) => {
+                if (event.key === "Escape") hidePreview();
                 if (event.key !== "Enter" && event.key !== " ") return;
                 event.preventDefault();
                 event.stopPropagation();
@@ -199,7 +273,6 @@ export function mountTagSuggestions(node, widget) {
             state.value = textarea.value;
             state.tagSignature = signature;
             decorate(tags);
-            if (state.visible) refresh();
         }
         text.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
         decorations.style.visibility = textarea.selectionStart === textarea.selectionEnd ? "visible" : "hidden";
@@ -207,7 +280,8 @@ export function mountTagSuggestions(node, widget) {
             const editing = doc.activeElement === textarea && textarea.selectionStart >= range.start && textarea.selectionStart <= range.end;
             tag.style.background = editing ? "transparent" : background;
         }
-        if (state.visible) position();
+        if (state.visible) refresh();
+        if (hovered) showPreview(hovered.label, hovered.tag, hovered.remove);
     }
 
     function hide() {
@@ -217,6 +291,8 @@ export function mountTagSuggestions(node, widget) {
         state.target = null;
         state.key = "";
         popup.style.display = "none";
+        clearThumbnails();
+        popup.replaceChildren();
         textarea.setAttribute("aria-expanded", "false");
         textarea.removeAttribute("aria-activedescendant");
     }
@@ -229,7 +305,7 @@ export function mountTagSuggestions(node, widget) {
         marker.textContent = "\u200b";
         mirror.appendChild(marker);
         const lineHeight = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.4 || 18;
-        const width = Math.min(180, textarea.clientWidth);
+        const width = Math.min(220, textarea.clientWidth);
         popup.style.width = `${width}px`;
         popup.style.maxHeight = `${Math.min(160, textarea.clientHeight)}px`;
         const left = textarea.offsetLeft + textarea.clientLeft;
@@ -281,19 +357,27 @@ export function mountTagSuggestions(node, widget) {
             hide();
             return;
         }
-        const key = `${prefix.start}:${prefix.end}:${items.join(",")}`;
+        const media = items.map((tag) => resolveMediaPreview(node, tag));
+        const key = `${prefix.start}:${prefix.end}:${items.join(",")}:${JSON.stringify(media)}`;
         state.prefix = prefix;
         if (key !== state.key) {
             state.key = key;
             state.items = items;
             state.active = 0;
+            clearThumbnails();
             popup.replaceChildren();
             for (const [index, tag] of items.entries()) {
                 const option = doc.createElement("div");
                 option.id = `${popup.id}-${index}`;
-                option.textContent = tag;
+                const thumbnail = createMediaPreview(doc, media[index]);
+                thumbnails.push(thumbnail);
+                thumbnail.element.setAttribute("aria-hidden", "true");
+                const label = doc.createElement("span");
+                label.textContent = tag;
+                option.append(thumbnail.element, label);
+                option.title = media[index].title;
                 option.setAttribute("role", "option");
-                Object.assign(option.style, { padding: "5px 8px", cursor: "pointer" });
+                Object.assign(option.style, { padding: "5px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" });
                 option.onpointerdown = (event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -301,12 +385,12 @@ export function mountTagSuggestions(node, widget) {
                 };
                 popup.appendChild(option);
             }
+            highlight();
         }
         state.visible = true;
         popup.style.display = "block";
         textarea.setAttribute("aria-expanded", "true");
         position();
-        highlight();
     }
 
     function keydown(event) {
@@ -348,6 +432,16 @@ export function mountTagSuggestions(node, widget) {
         state.listeners.push([type, listener]);
     }
     state.sync = sync;
+    const dismissPreview = () => hidePreview();
+    view.addEventListener("blur", dismissPreview);
+    doc.addEventListener("scroll", dismissPreview, true);
+    state.cleanupPreviews = () => {
+        hidePreview();
+        clearThumbnails();
+        tooltip.remove();
+        view.removeEventListener("blur", dismissPreview);
+        doc.removeEventListener("scroll", dismissPreview, true);
+    };
     state.attributes = attributes;
     state.resizeObserver = new ResizeObserver(sync);
     state.resizeObserver.observe(textarea);
@@ -364,6 +458,7 @@ export function removeTagSuggestions(widget) {
         else state.textarea.setAttribute(name, value);
     }
     state.resizeObserver.disconnect();
+    state.cleanupPreviews();
     for (const [name, value] of state.styles) state.textarea.style[name] = value;
     state.popup.remove();
     state.mirror.remove();

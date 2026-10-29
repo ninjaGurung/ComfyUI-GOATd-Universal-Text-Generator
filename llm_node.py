@@ -15,7 +15,7 @@ from comfy_api.latest import io, ui
 
 from .media import add_media
 from .local import generate_local
-from .prompt_guides import GUIDE_OPTIONS, combine_system_prompt
+from .prompt_guides import combine_system_prompt, get_guide_options
 from .stop_sequences import parse_stop_sequences
 
 
@@ -479,7 +479,7 @@ class GOATUniversalTextGenerator(io.ComfyNode):
             inputs=[
                 fields["prompt_idea"],
                 fields["system_prompt"],
-                io.Combo.Input("prompt_guide", options=GUIDE_OPTIONS, default="None"),
+                io.Combo.Input("prompt_guide", options=get_guide_options(), default="None"),
                 fields["images"],
                 fields["videos"],
                 fields["audios"],

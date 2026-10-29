@@ -4,6 +4,7 @@
 import { app } from "../../../scripts/app.js";
 import { ComfyWidgets } from "../../../scripts/widgets.js";
 import { mountTagSuggestions, removeTagSuggestions } from "./tag_suggestions.js";
+import { setupGuideMenu, removeGuideMenu } from "./prompt_guides.js";
 import "./settings.js";
 import "./context.js";
 
@@ -177,41 +178,6 @@ function mountTextButtons(node, widget) {
     }
 }
 
-function setupGuideMenu(widget) {
-    if (!widget) return;
-    const onPointerDown = widget.onPointerDown;
-    widget.onPointerDown = function (pointer, node, canvas) {
-        if (onPointerDown?.apply(this, arguments)) return true;
-        const event = pointer.eDown;
-        const x = event.canvasX - node.pos[0];
-        const width = this.width || node.size[0];
-        if (event.button !== 0 || x < 40 || x > width - 40) return false;
-        pointer.onClick = () => {
-            const values = this.options.values;
-            const sorted = [...values].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-            const leaf = (value, content = value) => ({
-                content,
-                callback: () => {
-                    this.setValue(value, { e: event, node, canvas });
-                    node.setDirtyCanvas(true, true);
-                },
-            });
-            const families = ["MiniMax H3", "Seedance"];
-            const folders = families.map((family) => ({
-                content: `📁 ${family}`,
-                has_submenu: true,
-                submenu: { options: sorted.filter((value) => value.startsWith(`${family} `))
-                    .map((value) => leaf(value, value.slice(family.length).replace(/^ - /, "").trim())) },
-            }));
-            const rest = sorted.filter((value) => value !== "None" && !families.some((family) => value.startsWith(`${family} `)));
-            new LiteGraph.ContextMenu([...folders, leaf("None"), ...rest.map((value) => leaf(value))], {
-                event, scale: Math.max(1, canvas.ds.scale), className: "dark", autoopen: true,
-            });
-        };
-        return true;
-    };
-}
-
 function setMinimumHeight(widget, height) {
     widget.options ??= {};
     widget.options.getMinHeight = () => height;
@@ -258,7 +224,7 @@ app.registerExtension({
                 if (widget.name === "system_prompt") setMinimumHeight(widget, 160);
             }
             restorePreview(this);
-            setupGuideMenu(this.widgets?.find((widget) => widget.name === "prompt_guide"));
+            setupGuideMenu(this.widgets?.find((widget) => widget.name === "prompt_guide"), this);
             if (nodeData.name === "GOATUniversalTextGenerator") orderGeneratorInputs(this);
             const minimum = this.computeSize();
             this.setSize([Math.max(this.size[0], minimum[0], 560),
@@ -282,6 +248,7 @@ app.registerExtension({
             this[inputOrderPending] = null;
             for (const widget of this.widgets ?? []) {
                 removeTagSuggestions(widget);
+                removeGuideMenu(widget);
                 clearTimeout(widget[copyResetTimer]);
                 widget[copyResetTimer] = null;
                 widget[copyControl]?.remove();
