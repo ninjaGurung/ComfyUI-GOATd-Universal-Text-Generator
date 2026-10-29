@@ -12,6 +12,7 @@ from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
 from aiohttp import web
+from .security import protect_route
 
 try:
     import pymupdf
@@ -249,6 +250,6 @@ async def update_folder(request):
 
 
 def register_routes(routes):
-    routes.get("/goat/prompt-guides")(get_guides)
-    routes.post("/goat/prompt-guides")(import_guide)
-    routes.patch("/goat/prompt-guides/folders")(update_folder)
+    routes.get("/goat/prompt-guides")(protect_route(get_guides))
+    routes.post("/goat/prompt-guides")(protect_route(import_guide))
+    routes.patch("/goat/prompt-guides/folders")(protect_route(update_folder))

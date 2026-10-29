@@ -274,8 +274,9 @@ class UniversalLLMTests(unittest.TestCase):
     def test_provider_auth_and_failure_matrix(self):
         for provider, (_, env_name) in node_module.PROVIDERS.items():
             base = "http://localhost:8080/v1" if provider == "OpenAI-compatible" else ""
+            bindings = json.dumps({node_module._endpoint(provider, base): env_name}) if base else "{}"
             for status in (400, 401, 403, 404, 429, 500, 302):
-                with self.subTest(provider=provider, status=status), patch.dict(os.environ, {env_name: "matrix-secret"}):
+                with self.subTest(provider=provider, status=status), patch.dict(os.environ, {env_name: "matrix-secret", "GOAT_API_KEY_BINDINGS": bindings}):
                     self.response.status_code = status
                     self.response.json.return_value = {"error": {"message": "Invalid parameter. Bearer matrix-secret"}}
                     self.post.reset_mock()
@@ -323,7 +324,7 @@ class UniversalLLMTests(unittest.TestCase):
         self.assertEqual(body["stop"], ["\nUser:", "END"])
         for name in ("top_k", "min_p", "repetition_penalty", "frequency_penalty", "presence_penalty", "context_window", "reasoning_effort", "reasoning_format", "include_reasoning"):
             self.assertNotIn(name, body)
-        with patch.dict(os.environ, {"CUSTOM_GROQ_KEY": "custom-secret"}):
+        with patch.dict(os.environ, {"CUSTOM_GROQ_KEY": "custom-secret", "GOAT_API_KEY_BINDINGS": json.dumps({"https://api.groq.com/openai/v1/chat/completions": "CUSTOM_GROQ_KEY"})}):
             self.generate("Groq", api_key="", api_key_env="CUSTOM_GROQ_KEY")
         self.assertEqual(self.post.call_args.kwargs["headers"]["Authorization"], "Bearer custom-secret")
         self.generate("Groq", api_key="direct-secret", base_url="https://example.test/openai/v1/chat/completions")
@@ -409,7 +410,7 @@ class UniversalLLMTests(unittest.TestCase):
 
     def test_custom_openai_compatible(self):
         self.generate("OpenAI-compatible", base_url="http://localhost:8080/v1/", seed=7, thinking="enabled", reasoning_effort="low")
-        self.assertEqual(self.post.call_args.args[0], "http://localhost:8080/v1/chat/completions")
+        self.assertEqual(self.post.call_args.args[0], "http://127.0.0.1:8080/v1/chat/completions")
         self.assertEqual(self.body()["max_tokens"], 1024)
         self.assertEqual(self.body()["reasoning_effort"], "low")
         self.assertNotIn("Authorization", self.post.call_args.kwargs["headers"])
@@ -426,7 +427,7 @@ class UniversalLLMTests(unittest.TestCase):
         )
         for provider, base, expected in cases:
             with self.subTest(base=base):
-                self.assertEqual(node_module._endpoint(provider, base), expected)
+                self.assertEqual(node_module._endpoint(provider, base), expected.replace("localhost", "127.0.0.1"))
 
     def test_invalid_urls_never_send_keys(self):
         for url in ("file:///tmp/key", "ftp://example.test", "http://user:secret@example.test/v1", "https://example.test/v1?key=secret", "https://example.test/v1#secret"):
@@ -454,6 +455,7 @@ class UniversalLLMTests(unittest.TestCase):
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-secret", "MY_LLM_KEY": "other-secret"}):
             self.generate(api_key="")
             self.assertEqual(self.post.call_args.kwargs["headers"]["Authorization"], "Bearer env-secret")
+            os.environ["GOAT_API_KEY_BINDINGS"] = json.dumps({"https://openrouter.ai/api/v1/chat/completions": "MY_LLM_KEY"})
             self.generate(api_key="", api_key_env="MY_LLM_KEY")
             self.assertEqual(self.post.call_args.kwargs["headers"]["Authorization"], "Bearer other-secret")
             self.generate(api_key="direct-secret", api_key_env="MY_LLM_KEY")

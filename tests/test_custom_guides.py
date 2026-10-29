@@ -150,7 +150,7 @@ class CustomGuideRouteTests(unittest.IsolatedAsyncioTestCase):
             routes = web.RouteTableDef()
             guides.register_routes(routes)
             app.add_routes(routes)
-            async with TestClient(TestServer(app)) as client:
+            async with TestClient(TestServer(app), headers={"X-GOAT-Request": "1"}) as client:
                 form = FormData()
                 form.add_field("name", "Actual upload")
                 form.add_field("new_folder", "Uploaded guides")

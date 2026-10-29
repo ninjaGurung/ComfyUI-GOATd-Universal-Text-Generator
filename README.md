@@ -107,9 +107,9 @@ Media support depends on both provider and model. Video frame mode sends visuals
 | Field | Purpose |
 | --- | --- |
 | **provider / model** | Where generation runs and its model ID. The model field is unused for ComfyUI Local. |
-| **api_key** | Provider key. Displayed masked, but saved in workflow JSON. |
-| **api_key_env** | Environment-variable name containing the key; available under advanced settings. |
-| **base_url** | Provider's default address, or your custom endpoint. |
+| **api_key** | Masked session-only key, omitted from saved workflows. Re-enter after reloading. |
+| **api_key_env** | Default provider key variable, or a variable explicitly bound to this endpoint on the server. |
+| **base_url** | Provider default or custom endpoint. HTTPS is required except for loopback local servers. |
 | **thinking / reasoning_effort** | Reasoning mode and effort, where supported. Some models always reason. |
 | **seed / control after generate** | Request repeatable sampling; keep or change the seed after a run. `-1` leaves it unset/random. |
 | **json_output** | Default **false**. Enable to request and validate a JSON object. Requires model support. |
@@ -129,9 +129,9 @@ Auto sampling works across models. It targets about **2 frames/second**, sharing
 
 Unsupported controls are omitted. Server providers start with sampling defaults (`-1`; frequency/presence penalties `0`). ComfyUI Local starts at temperature **0.7**, top_p **0.95**, top_k **40**, min_p **0.05**, and repetition_penalty **1.1**.
 
-Model, reasoning, credentials, endpoint, and advanced settings are remembered separately per provider while the node is open. Only the current provider's values are saved in the workflow.
+Model, reasoning, credentials, endpoint, and advanced settings are remembered separately per provider while the node is open. The current provider's settings are saved in the workflow; entered API keys stay in memory.
 
-The context meter estimates text usage. Older turns are removed as the limit fills; previous media is not retained. Memory clears on restart or after an idle hour. Hosted model limits still apply.
+The context meter estimates text usage. As the window fills, the selected model summarizes older text turns before removing them, keeping recent turns where space permits. Summaries can lose details and add requests, latency, and provider charges. If a summary fails, cannot fit, or the window is too small, the oldest complete turns are dropped. The `info` output reports summary requests and status. Previous media is not remembered; media still connected is sent again each run. Memory clears on backend restart; sessions idle for an hour are removed on the next memory lookup. Storage caps can also evict history. The estimate excludes media tokens and does not reserve the response budget; model/provider limits still apply.
 
 ## Prompt guides
 
@@ -166,6 +166,24 @@ Uploads are limited to 8 MB and extracted text to 2 million characters; PDFs sup
 | ComfyUI Local | Connected CLIP model; no server | Not needed |
 
 Enter a key in **api_key**, or create an environment variable before launching ComfyUI and leave **api_key** empty. **api_key_env** can stay blank to use the default variable above. Use environment variables to keep keys out of shared workflows. Prompts and connected media are sent to the selected endpoint.
+
+### Credentials and access
+
+Entered keys are kept in browser/backend memory and are omitted from workflow saves. API-format exports contain temporary references bound to that provider and exact endpoint, never the entered key. References expire after an idle hour or backend restart and are usable on that backend while active. Re-enter keys when opening a saved workflow or moving an API workflow to another installation. Old exports may still contain keys: remove them and rotate any key you already shared. Keys manually placed in other nodes or API JSON are outside this widget's protection.
+
+Environment credentials are read only for their provider's exact default endpoint. Custom endpoints do not inherit a hosted provider's key. To use a custom variable or endpoint, set `GOAT_API_KEY_BINDINGS` **on the server before launching ComfyUI** to a JSON object mapping full generation endpoint URLs to variable names, for example:
+
+```json
+{"https://my-server.example/v1/chat/completions": "MY_LLM_KEY"}
+```
+
+The same binding protects model-list requests. Leave **api_key_env** blank to use the bound variable, or enter that exact name. Alternatively, enter a session-only key for the custom server.
+
+Remote API endpoints require HTTPS with a trusted certificate. HTTP is limited to loopback addresses for LM Studio, Ollama, and OpenAI-compatible local servers, including older LM Studio's `/v1` API. `localhost` is normalized to `127.0.0.1`; IPv6 loopback is supported explicitly. Loopback requests bypass environment-configured proxies. For a server on another machine, use HTTPS through a trusted TLS proxy, or an SSH tunnel terminating on loopback. Local authentication keys remain supported.
+
+Extension routes require local loopback access, matching browser origin, and the extension's request header. For remote ComfyUI access, configure a strong `GOAT_ROUTE_TOKEN` on the server and enter it in the extension's password dialog. This token stays in browser memory. Remote connections require HTTPS; a local TLS reverse proxy may forward to ComfyUI on loopback. Keep the public host unchanged when proxying so origin checks match. Configure the token even when a proxy connects locally: the proxy otherwise appears to be a local client.
+
+These checks protect `/goat/` routes; they do not authenticate ComfyUI's queue, history, or other extensions. Protect the whole server before exposing it remotely. Installed custom nodes run inside the ComfyUI process and must be trusted. The project has no developer collection endpoint; your chosen API endpoint receives the credential and request data needed for generation.
 
 ### LM Studio
 

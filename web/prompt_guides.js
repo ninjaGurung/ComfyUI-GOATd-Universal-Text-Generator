@@ -1,4 +1,4 @@
-import { api } from "../../../scripts/api.js";
+import { goatFetch } from "./security.js";
 
 const states = new Map();
 let catalog = { guides: [], folders: [], formats: [".md", ".txt", ".text", ".docx", ".pdf"] };
@@ -9,7 +9,8 @@ const order = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" });
 const menuText = (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 
 async function request(options) {
-    const response = await api.fetchApi("/goat/prompt-guides" + (options?.method === "PATCH" ? "/folders" : ""), options);
+    const response = await goatFetch("/goat/prompt-guides" + (options?.method === "PATCH" ? "/folders" : ""), options);
+    if (response.status === 401 || response.status === 403) throw new Error("GOAT access denied. Open ComfyUI locally or configure GOAT_ROUTE_TOKEN for remote access.");
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `Prompt guide request failed (HTTP ${response.status}).`);
     return result;

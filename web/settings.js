@@ -1,5 +1,5 @@
 import { app } from "../../../scripts/app.js";
-import { api } from "../../../scripts/api.js";
+import { goatFetch, keyReference, keyValue } from "./security.js";
 
 const defaults = {
     OpenRouter: "https://openrouter.ai/api/v1",
@@ -32,7 +32,7 @@ function syncContext(node) {
 }
 
 function commit(node, widget, value) {
-    if (widget.setValue) widget.setValue(value, { node, canvas: app.canvas });
+    if (widget.setValue && widget.name !== "api_key") widget.setValue(value, { node, canvas: app.canvas });
     else {
         widget.value = value;
         widget.callback?.(value, app.canvas, node);
@@ -52,7 +52,7 @@ function editValue(node, widget, secret) {
     label.style.display = "block";
     const input = document.createElement("input");
     input.type = secret ? "password" : "text";
-    input.value = String(widget.value ?? "");
+    input.value = String(widget.name === "api_key" ? keyValue(widget) : widget.value ?? "");
     input.autocomplete = "off";
     input.spellcheck = false;
     input.setAttribute("aria-label", label.textContent);
@@ -171,7 +171,7 @@ function setupEditor(node, widget, secret) {
             ctx.fillText(this.name, 25, y + height / 2);
             ctx.fillStyle = LiteGraph.WIDGET_TEXT_COLOR || "#ddd";
             ctx.textAlign = "right";
-            ctx.fillText(this.value ? "*****..." : "", width - 25, y + height / 2);
+            ctx.fillText(keyValue(this) ? "*****..." : "", width - 25, y + height / 2);
             ctx.restore();
         };
     }
@@ -219,18 +219,22 @@ async function refreshModels(node) {
     node.setDirtyCanvas(true, true);
     let failureMessage = "Could not load models. Check the base URL and server, then refresh.";
     try {
-        const response = await api.fetchApi("/goat/models", {
+        const values = Object.fromEntries(["provider", "base_url", "api_key", "api_key_env"]
+            .map((name) => [name, state.widgets[name]?.value ?? ""]));
+        values.api_key = keyValue(state.widgets.api_key);
+        values.api_key = values.api_key ? await keyReference(values) : "";
+        if (request.signal.aborted) return;
+        const response = await goatFetch("/goat/models", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             signal: request.signal,
-            body: JSON.stringify(Object.fromEntries(["provider", "base_url", "api_key", "api_key_env"]
-                .map((name) => [name, state.widgets[name]?.value ?? ""]))),
+            body: JSON.stringify(values),
         });
         if (!response.ok) {
             const hints = {
                 400: "Check the provider and base URL.",
-                401: "Check the API key or API key environment variable.",
-                403: "The provider denied access. Check API key permissions.",
+                401: "GOAT server access denied. Enter the configured GOAT_ROUTE_TOKEN.",
+                403: "GOAT access denied. Open ComfyUI locally or configure secure remote access.",
                 404: "The models endpoint was not found. Check the base URL.",
                 429: "The provider rate limit was reached. Try again later.",
                 502: "The provider could not be reached. Check the base URL and server.",
@@ -241,7 +245,7 @@ async function refreshModels(node) {
             if (typeof detail?.error === "string") {
                 let message = detail.error;
                 for (const name of ["api_key", "api_key_env"]) {
-                    const secret = String(state.widgets[name]?.value ?? "");
+                    const secret = String(keyValue(state.widgets[name]));
                     if (secret) message = message.replaceAll(secret, "[redacted]");
                 }
                 failureMessage = message.slice(0, 600);
@@ -295,7 +299,7 @@ app.registerExtension({
                 providerChanged?.apply(widgets.provider, args);
                 const provider = widgets.provider.value;
                 if (provider !== state.provider) {
-                    state.credentials.set(state.provider, { api_key: widgets.api_key.value, api_key_env: widgets.api_key_env.value });
+                    state.credentials.set(state.provider, { api_key: keyValue(widgets.api_key), api_key_env: widgets.api_key_env.value });
                     state.urls.set(state.provider, widgets.base_url.value);
                     state.controls.set(state.provider, Object.fromEntries(Object.keys(generationDefaults)
                         .filter((name) => widgets[name]).map((name) => [name, widgets[name].value])));

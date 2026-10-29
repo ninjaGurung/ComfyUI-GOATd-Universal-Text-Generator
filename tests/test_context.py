@@ -12,12 +12,13 @@ import os
 from urllib.parse import urlsplit
 
 import requests
+from test_security import security
 
 
 # Exercise the node's text/context contracts without loading GPU model packages.
 SOURCE = ast.parse((Path(__file__).resolve().parents[1] / "llm_node.py").read_text(encoding="utf-8"))
-NAMES = {"PROVIDERS", "_context_tokens", "_transcript", "_ConversationMemory", "_endpoint", "_payload", "_answer", "_error_detail"}
-namespace = dict(OrderedDict=OrderedDict, sha256=sha256, Lock=Lock, monotonic=monotonic, urlsplit=urlsplit, os=os, json=json, requests=requests, parse_stop_sequences=lambda value: [])
+NAMES = {"PROVIDERS", "_SUMMARY_PROMPT", "_history_tokens", "_compact_history", "_context_tokens", "_transcript", "_ConversationMemory", "_endpoint", "_resolve_key", "_payload", "_answer", "_error_detail"}
+namespace = dict(OrderedDict=OrderedDict, sha256=sha256, Lock=Lock, monotonic=monotonic, urlsplit=urlsplit, os=os, json=json, requests=requests, parse_stop_sequences=lambda value: [], is_loopback=security.is_loopback, session_keys=security.SessionKeys())
 definitions = [node for node in SOURCE.body if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in NAMES or isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in NAMES for target in node.targets)]
 exec(compile(ast.Module(body=definitions, type_ignores=[]), "llm_node.py", "exec"), namespace)
 for class_name, method_name in (("UniversalLLM", "generate"), ("GOATUniversalTextGenerator", "execute"), ("GOATUniversalTextGenerator", "fingerprint_inputs")):
@@ -78,6 +79,39 @@ class ContextTests(unittest.TestCase):
         self.history()
         self.history(reset=1)
         self.remember(reset=0)
+        self.assertEqual(self.history(reset=1), [])
+
+    def test_compaction_preserves_summary_and_recent_turns_within_budget(self):
+        history = []
+        for index in range(5):
+            history.extend([{"role": "user", "content": f"idea {index}: " + "a" * 160}, {"role": "assistant", "content": "b" * 160}])
+        summarize = Mock(return_value="Keep the blue cabin, snowy setting, and the user's latest corrections.")
+        compacted = namespace["_compact_history"](history, 300, summarize)
+        self.assertEqual(compacted[0]["content"], namespace["_SUMMARY_PROMPT"])
+        self.assertEqual(compacted[-2:], history[-2:])
+        self.assertLessEqual(namespace["_history_tokens"](compacted), 300)
+        self.assertTrue(summarize.call_args.args[0])
+
+    def test_repeated_compaction_includes_prior_summary_and_falls_back_on_failure(self):
+        original = [{"role": "user", "content": namespace["_SUMMARY_PROMPT"]}, {"role": "assistant", "content": "Original constraints"}]
+        original += [{"role": "user", "content": "a" * 1000}, {"role": "assistant", "content": "b" * 1000}]
+        summarize = Mock(return_value="Merged constraints")
+        compacted = namespace["_compact_history"](original, 200, summarize)
+        self.assertIn("Original constraints", namespace["_transcript"](summarize.call_args.args[0]))
+        self.assertEqual(sum(item["content"] == namespace["_SUMMARY_PROMPT"] for item in compacted), 1)
+        for answer in ("", "x" * 5000):
+            fallback = namespace["_compact_history"](original, 200, Mock(return_value=answer))
+            self.assertLessEqual(namespace["_history_tokens"](fallback), 200)
+
+    def test_summarization_does_not_hold_memory_lock_and_reset_still_wins(self):
+        self.history()
+        self.remember(prompt="a" * 1000, answer="b" * 1000)
+        def summarize(earlier, tokens):
+            self.assertTrue(self.memory.lock.acquire(blocking=False))
+            self.memory.lock.release()
+            self.memory.history("one", "model", 1, 1024, "system", "fresh")
+            return "Earlier idea"
+        self.memory.history("one", "model", 0, 256, "system", "next", summarize)
         self.assertEqual(self.history(reset=1), [])
 
     def test_positive_context_bypasses_execution_cache(self):
@@ -191,6 +225,28 @@ class GeneratorContextTests(unittest.TestCase):
         self.generate.side_effect = None
         self.execute()
         self.assertEqual(self.generate.call_args.kwargs["history"], [])
+
+    def test_overflow_summarizes_old_turns_before_the_next_generation(self):
+        self.settings["context_window"] = 512
+        self.generate.side_effect = [("a" * 400,), ("Keep the blue cabin and snow.",), ("refined",)]
+        self.execute(prompt_idea="p" * 320)
+        output = self.execute(prompt_idea="q" * 1500)
+        calls = self.generate.call_args_list
+        self.assertEqual(len(calls), 3)
+        self.assertIn("Summarize the conversation", calls[1].kwargs["system_prompt"])
+        self.assertFalse(calls[1].kwargs["json_output"])
+        self.assertNotIn("images", calls[1].kwargs)
+        self.assertEqual(calls[2].kwargs["history"][1]["content"], "Keep the blue cabin and snow.")
+        self.assertEqual(json.loads(output.info)["context"]["summary"], {"requests": 1, "status": "summarized"})
+
+    def test_summary_failure_keeps_generation_working(self):
+        self.settings["context_window"] = 512
+        self.generate.side_effect = [("a" * 400,), RuntimeError("summary unavailable"), ("refined",)]
+        self.execute(prompt_idea="p" * 320)
+        output = self.execute(prompt_idea="q" * 1500)
+        self.assertEqual(output.text, "refined")
+        self.assertEqual(self.generate.call_args.kwargs["history"], [])
+        self.assertEqual(json.loads(output.info)["context"]["summary"]["status"], "failed")
 
 
 if __name__ == "__main__":

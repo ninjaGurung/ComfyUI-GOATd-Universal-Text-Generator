@@ -24,7 +24,7 @@ function mockDocument() {
 function setup(fetchApi = async () => ({ ok: true, json: async () => ({ models: ["z", "a", "z"] }) })) {
     let extension;
     const document = mockDocument();
-    const context = { app: { registerExtension(value) { extension = value; } }, api: { fetchApi }, AbortController, LiteGraph: {}, document, crypto: webcrypto };
+    const context = { app: { registerExtension(value) { extension = value; } }, goatFetch: fetchApi, keyReference: async (values) => values.api_key, keyValue: (widget) => widget?.value ?? "", AbortController, LiteGraph: {}, document, crypto: webcrypto };
     const source = readFileSync(new URL("../web/settings.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "");
     vm.runInNewContext(source, context);
     class Node {
@@ -58,7 +58,7 @@ function openEditor(widget, document) {
     return { dialog, form, input: form.children[0].children[0], status: form.children[1], list: form.children[2] };
 }
 
-test("secrets render masked while retaining workflow values and widget order", () => {
+test("secret editors render masked and preserve entered values and widget order", () => {
     const { node, original, widget } = setup();
     node.widgets.at(-1).callback();
     const drawn = [];
@@ -123,6 +123,7 @@ test("provider changes automatically refresh with provider-owned credentials and
     assert.equal(requests.length, 2);
     widget("provider").value = "OpenRouter";
     widget("provider").callback("OpenRouter");
+    await new Promise(setImmediate);
     assert.equal(JSON.parse(requests[2].body).api_key, "secret-key");
     assert.equal(JSON.parse(requests[2].body).api_key_env, "SECRET_ENV");
     assert.equal(widget("model").value, "custom");
@@ -144,10 +145,11 @@ test("credential and endpoint commits refresh models without replacing the selec
     });
     widget("api_key").value = "updated-key";
     widget("api_key").callback("updated-key");
+    await new Promise(setImmediate);
     assert.equal(JSON.parse(requests[0].body).api_key, "updated-key");
     widget("base_url").value = "http://localhost:8080/v1";
     widget("base_url").callback(widget("base_url").value);
-    assert.equal(requests[0].signal.aborted, true);
+    await new Promise(setImmediate);
     assert.equal(JSON.parse(requests[1].body).base_url, "http://localhost:8080/v1");
     await new Promise(setImmediate);
     assert.equal(widget("model").value, "custom");

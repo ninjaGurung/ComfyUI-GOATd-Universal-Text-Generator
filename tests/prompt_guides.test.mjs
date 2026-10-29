@@ -28,6 +28,7 @@ function setup() {
     };
     const source = readFileSync(new URL("../web/prompt_guides.js", import.meta.url), "utf8")
         .replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
+    context.goatFetch = (...args) => context.api.fetchApi(...args);
     vm.runInNewContext(source, context);
     const node = { pos: [0, 0], size: [560, 800], setDirtyCanvas() {} };
     const makeWidget = () => ({ value: "None", options: { values: ["None", "MiniMax H3 - Pika", "Seedance 2.5", "Fibo 2"] }, setValue(value) { this.value = value; }, draw() { return this.value; } });

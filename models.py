@@ -2,12 +2,14 @@
 # GitHub: https://github.com/ninjaGurung
 
 import asyncio
-import os
+import json
+from urllib.parse import urlsplit
 
 from aiohttp import web
 import requests
 
-from .llm_node import PROVIDERS, _endpoint, _error_detail
+from .llm_node import PROVIDERS, _endpoint, _error_detail, _resolve_key
+from .security import is_loopback, protect_route, session_keys
 
 
 def _models_endpoint(provider, base_url):
@@ -53,18 +55,14 @@ def _fetch_models(values):
     if provider not in PROVIDERS:
         raise ValueError("Choose a supported LLM provider.")
     endpoint = _models_endpoint(provider, values.get("base_url", ""))
-    env_name = values.get("api_key_env", "").strip() or PROVIDERS[provider][1]
-    env_key = os.environ.get(env_name, "").strip()
     direct_key = values.get("api_key", "").strip()
-    key = direct_key or env_key
-    if key.lower().startswith("bearer "):
-        key = key[7:].strip()
+    key = _resolve_key(provider, _endpoint(provider, values.get("base_url", "")), direct_key, values.get("api_key_env", ""))
     headers = {"Accept": "application/json"}
     if key:
         headers["Authorization"] = f"Bearer {key}"
     try:
         with requests.Session() as session:
-            with session.get(endpoint, headers=headers, timeout=15, allow_redirects=False, auth=lambda request: request) as response:
+            with session.get(endpoint, headers=headers, timeout=15, allow_redirects=False, auth=lambda request: request, proxies={"http": "", "https": ""} if is_loopback(urlsplit(endpoint).hostname) else None) as response:
                 try:
                     result = response.json()
                 except ValueError:
@@ -73,7 +71,7 @@ def _fetch_models(values):
                     result = {}
                 if response.status_code != 200:
                     detail = _error_detail(result, key)
-                    for secret in (direct_key, env_key, env_name):
+                    for secret in (direct_key, values.get("api_key_env", "")):
                         if secret:
                             detail = detail.replace(secret, "[redacted]")
                     hint = " Check this provider's API key or api_key_env." if response.status_code in (401, 403) else ""
@@ -95,4 +93,28 @@ async def list_models(request):
 
 
 def register_routes(routes):
-    routes.post("/goat/models")(list_models)
+    routes.post("/goat/models")(protect_route(list_models))
+    routes.post("/goat/credentials")(protect_route(store_key))
+
+
+async def store_key(request):
+    data = bytearray()
+    async for chunk in request.content.iter_chunked(4096):
+        data.extend(chunk)
+        if len(data) > 16384:
+            raise web.HTTPRequestEntityTooLarge(max_size=16384, actual_size=len(data))
+    try:
+        values = json.loads(data)
+        if not isinstance(values, dict) or any(not isinstance(values.get(name, ""), str) for name in ("provider", "base_url", "api_key")):
+            raise ValueError("Send provider, base_url, and api_key as text.")
+        provider = values.get("provider", "")
+        if provider not in PROVIDERS:
+            raise ValueError("Choose an API provider.")
+        endpoint = _endpoint(provider, values.get("base_url", ""))
+        key = values.get("api_key", "").strip()
+        if not key or key.startswith("goat-session:") or "\r" in key or "\n" in key:
+            raise ValueError("Enter a valid provider API key.")
+        reference = session_keys.put(provider, endpoint, key)
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+    return web.json_response({"reference": reference})
