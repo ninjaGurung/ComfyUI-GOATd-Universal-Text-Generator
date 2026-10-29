@@ -525,6 +525,25 @@ class GOATTextGeneratorSettings(io.ComfyNode):
         return io.NodeOutput(settings)
 
 
+def _local_clip_name(prompt, unique_id):
+    prompt = prompt or {}
+    inputs = prompt.get(str(unique_id), {}).get("inputs", {})
+    link = inputs.get("clip")
+    visited = set()
+    while isinstance(link, (list, tuple)) and len(link) == 2:
+        node_id = str(link[0])
+        if node_id in visited:
+            break
+        visited.add(node_id)
+        inputs = prompt.get(node_id, {}).get("inputs", {})
+        names = [inputs.get(key) for key in ("clip_name", "clip_name1", "clip_name2", "clip_name3", "clip_name4")]
+        names = [name for name in names if isinstance(name, str) and name]
+        if names:
+            return ", ".join(names)
+        link = inputs.get("clip")
+    return "connected CLIP"
+
+
 class GOATUniversalTextGenerator(io.ComfyNode):
     @classmethod
     def define_schema(cls):
@@ -536,6 +555,7 @@ class GOATUniversalTextGenerator(io.ComfyNode):
             description="Turn a prompt idea into text using your selected guide and system prompt. Outputs generated text and a JSON info string for text viewer nodes.",
             search_aliases=["universal llm", "openrouter", "opencode", "cerebras", "ollama", "lm studio", "language model"],
             is_output_node=True,
+            hidden=[io.Hidden.prompt, io.Hidden.unique_id],
             inputs=[
                 fields["prompt_idea"],
                 fields["system_prompt"],
@@ -625,7 +645,7 @@ class GOATUniversalTextGenerator(io.ComfyNode):
         seed = settings.get("seed", -1)
         info = {
             "provider": provider,
-            "model": settings["model"] if provider != "ComfyUI Local" else "connected CLIP",
+            "model": settings["model"] if provider != "ComfyUI Local" else _local_clip_name(cls.hidden.prompt, cls.hidden.unique_id),
             "endpoint": metadata.get("endpoint"),
             "thinking": settings.get("thinking"),
             "reasoning_effort": settings.get("reasoning_effort"),

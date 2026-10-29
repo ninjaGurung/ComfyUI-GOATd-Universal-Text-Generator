@@ -32,6 +32,7 @@ class GenerationInfoTests(unittest.TestCase):
         namespace["add_media"] = Mock()
         namespace["parse_stop_sequences"] = lambda value: []
         namespace["generate_local"] = Mock(return_value="generated output")
+        self.hidden = SimpleNamespace(prompt=None, unique_id="generator")
         self.response = Mock(status_code=200)
         self.response.__enter__ = Mock(return_value=self.response)
         self.response.__exit__ = Mock(return_value=False)
@@ -42,7 +43,7 @@ class GenerationInfoTests(unittest.TestCase):
     def execute(self, **kwargs):
         options = dict(prompt_idea="private prompt idea", system_prompt="private system prompt", prompt_guide="None", settings=self.settings, context_session="private-session-uuid")
         options.update(kwargs)
-        return namespace["execute"](None, **options)
+        return namespace["execute"](SimpleNamespace(hidden=self.hidden), **options)
 
     def test_first_text_output_and_zero_context_preview_are_preserved(self):
         output = self.execute()
@@ -90,6 +91,38 @@ class GenerationInfoTests(unittest.TestCase):
         self.assertIsNone(info["seed"]["effective"])
         self.assertFalse(info["seed"]["sent"])
         self.assertIsNone(info["endpoint"])
+
+    def test_local_model_name_comes_from_connected_clip_loader(self):
+        self.settings["provider"] = "ComfyUI Local"
+        for loader_type, model in (("CLIPLoader", "gemma_4.safetensors"), ("CLIPLoaderGGUF", "Qwen3-Q4_K_M.gguf")):
+            with self.subTest(loader=loader_type):
+                self.hidden.prompt = {
+                    "generator": {"inputs": {"clip": ["loader", 0]}},
+                    "loader": {"class_type": loader_type, "inputs": {"clip_name": model, "type": "gemma4"}},
+                    "unconnected": {"inputs": {"clip_name": "wrong-model.safetensors"}},
+                }
+                output = self.execute(clip=object())
+                self.assertEqual(json.loads(output.result[1])["model"], model)
+                self.assertNotIn("wrong-model", output.result[1])
+
+    def test_local_model_name_follows_clip_through_patching_nodes(self):
+        self.settings["provider"] = "ComfyUI Local"
+        self.hidden.prompt = {
+            "generator": {"inputs": {"clip": ["patch", 1]}},
+            "patch": {"inputs": {"clip": ["loader", 0], "lora_name": "adapter.safetensors"}},
+            "loader": {"inputs": {"clip_name": "models/gemma_4.safetensors"}},
+        }
+        self.assertEqual(json.loads(self.execute(clip=object()).result[1])["model"], "models/gemma_4.safetensors")
+
+    def test_local_unknown_loader_and_cyclic_links_keep_fallback(self):
+        self.settings["provider"] = "ComfyUI Local"
+        for inputs in ({}, {"clip": ["loader", 0]}):
+            with self.subTest(inputs=inputs):
+                self.hidden.prompt = {
+                    "generator": {"inputs": {"clip": ["loader", 0]}},
+                    "loader": {"inputs": inputs},
+                }
+                self.assertEqual(json.loads(self.execute(clip=object()).result[1])["model"], "connected CLIP")
 
     def test_ollama_usage_and_stop_text_redaction(self):
         self.settings["provider"] = "Ollama"

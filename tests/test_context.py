@@ -17,7 +17,7 @@ from test_security import security
 
 # Exercise the node's text/context contracts without loading GPU model packages.
 SOURCE = ast.parse((Path(__file__).resolve().parents[1] / "llm_node.py").read_text(encoding="utf-8"))
-NAMES = {"PROVIDERS", "_SUMMARY_PROMPT", "_history_tokens", "_compact_history", "_context_tokens", "_transcript", "_ConversationMemory", "_endpoint", "_resolve_key", "_payload", "_answer", "_error_detail"}
+NAMES = {"PROVIDERS", "_SUMMARY_PROMPT", "_history_tokens", "_compact_history", "_context_tokens", "_transcript", "_ConversationMemory", "_endpoint", "_resolve_key", "_payload", "_answer", "_error_detail", "_local_clip_name"}
 namespace = dict(OrderedDict=OrderedDict, sha256=sha256, Lock=Lock, monotonic=monotonic, urlsplit=urlsplit, os=os, json=json, requests=requests, parse_stop_sequences=lambda value: [], is_loopback=security.is_loopback, session_keys=security.SessionKeys())
 definitions = [node for node in SOURCE.body if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in NAMES or isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in NAMES for target in node.targets)]
 exec(compile(ast.Module(body=definitions, type_ignores=[]), "llm_node.py", "exec"), namespace)
@@ -184,7 +184,7 @@ class GeneratorContextTests(unittest.TestCase):
     def execute(self, **kwargs):
         options = dict(prompt_idea="idea", system_prompt="system", prompt_guide="guide", settings=self.settings, context_session="session")
         options.update(kwargs)
-        return namespace["GOATUniversalTextGenerator_execute"](None, **options)
+        return namespace["GOATUniversalTextGenerator_execute"](SimpleNamespace(hidden=SimpleNamespace(prompt=None, unique_id=None)), **options)
 
     def test_repeated_generation_remembers_and_reports_context(self):
         first = self.execute()
