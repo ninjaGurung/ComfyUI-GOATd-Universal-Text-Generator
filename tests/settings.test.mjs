@@ -50,12 +50,12 @@ function setup(fetchApi = async () => ({ ok: true, json: async () => ({ models: 
 }
 
 test("Nodes 2.0 model widgets keep the searchable model editor", () => {
-    const { widget, document } = setup(undefined, true);
+    const { node, widget, document } = setup(undefined, true);
     const model = widget("model");
     assert.equal(typeof model.draw, "function");
     let drawn = false;
     model.drawWidget = () => { drawn = true; };
-    model.draw({}, {}, 300, 20, 20);
+    model.draw({}, node, 300, 20, 20);
     assert.equal(drawn, true);
     const { dialog } = openEditor(model, document);
     assert.equal(dialog.open, true);
@@ -64,6 +64,27 @@ test("Nodes 2.0 model widgets keep the searchable model editor", () => {
 test("classic model widgets without drawWidget keep the built-in renderer", () => {
     const { widget } = setup(undefined, "classic");
     assert.equal(widget("model").draw, undefined);
+});
+
+test("custom settings widgets follow node width after switching back from Nodes 2.0", () => {
+    const { node, widget } = setup(undefined, true);
+    node.widgets.at(-1).callback();
+    const shapes = [];
+    const ctx = new Proxy({ roundRect(x, y, width) { shapes.push(width); } }, { get: (target, key) => target[key] ?? (() => {}) });
+    const model = widget("model");
+    let modelWidth;
+    model.drawWidget = (ctx, options) => { modelWidth = options.width; };
+    for (const width of [240, 640]) {
+        node.size[0] = width;
+        for (const name of ["model", "api_key", "api_key_env"]) {
+            const item = widget(name);
+            item.width = 480;
+            item.draw(ctx, node, item.width, 20, 20);
+            assert.equal(item.width, width, name);
+        }
+        assert.equal(modelWidth, width);
+        assert.deepEqual(shapes.splice(0), [width - 30, width - 30]);
+    }
 });
 
 function openEditor(widget, document) {

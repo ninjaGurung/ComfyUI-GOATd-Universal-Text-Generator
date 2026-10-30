@@ -205,6 +205,7 @@ test("native combos without draw render guide labels without writing their stabl
     widget.options.getOptionLabel = (option) => `Original ${option}`;
     s.context.setupGuideMenu(widget, s.node);
     assert.equal(typeof widget.draw, "function");
+    s.context.LiteGraph.vueNodesMode = true;
     widget.draw({}, s.node, 400, 1, 20);
     assert.deepEqual(drawn, { value: "Custom:one", y: 1, width: 400, showText: true });
     const menu = await s.open(widget);
@@ -214,4 +215,24 @@ test("native combos without draw render guide labels without writing their stabl
     assert.equal(widget.options.getOptionLabel("MiniMax H3 - Pika"), "Original MiniMax H3 - Pika");
     assert.equal(widget.value, "Custom:one");
     assert.equal(writes, 0);
+});
+
+test("guide width follows the node after a classic to Nodes 2.0 round trip", () => {
+    const s = setup();
+    const widget = s.makeWidget();
+    delete widget.draw;
+    let drawnWidth;
+    widget.drawWidget = (ctx, options) => { drawnWidth = options.width; };
+    s.context.setupGuideMenu(widget, s.node);
+    s.context.LiteGraph.vueNodesMode = true;
+    widget.width = 480;
+    widget.draw({}, s.node, 480, 1, 20);
+    assert.equal(drawnWidth, 480);
+    s.context.LiteGraph.vueNodesMode = false;
+    for (const width of [300, 720]) {
+        s.node.size[0] = width;
+        widget.draw({}, s.node, widget.width, 1, 20);
+        assert.equal(drawnWidth, width);
+        assert.equal(widget.width, width);
+    }
 });

@@ -160,6 +160,7 @@ function editValue(node, widget, secret) {
 function setupEditor(node, widget, secret) {
     if (secret) {
         widget.draw = function (ctx, node, width, y, height) {
+            if (!LiteGraph.vueNodesMode) this.width = width = node.size[0];
             ctx.fillStyle = LiteGraph.WIDGET_BGCOLOR || "#222";
             ctx.beginPath();
             ctx.roundRect(15, y, width - 30, height, 6);
@@ -179,6 +180,7 @@ function setupEditor(node, widget, secret) {
         };
     } else if (!widget.draw && widget.drawWidget) {
         widget.draw = function (ctx, node, width, y) {
+            if (!LiteGraph.vueNodesMode) this.width = width = node.size[0];
             this.y = y;
             this.drawWidget(ctx, { width, showText: true });
         };

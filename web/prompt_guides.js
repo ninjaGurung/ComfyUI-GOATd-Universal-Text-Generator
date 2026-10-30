@@ -169,6 +169,7 @@ export function setupGuideMenu(widget, node) {
         ?? getOptionLabel?.(value) ?? String(value ?? "");
     // Nodes 2.0 must use the custom widget adapter to preserve the guide menu.
     if (!widget.draw && widget.drawWidget) widget.draw = function (ctx, node, width, y) {
+        if (!LiteGraph.vueNodesMode) this.width = width = node.size[0];
         this.y = y;
         this.drawWidget(ctx, { width, showText: true });
     };
