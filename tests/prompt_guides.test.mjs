@@ -194,6 +194,8 @@ test("native combos without draw render guide labels without writing their stabl
     await s.open();
     const widget = s.makeWidget();
     delete widget.draw;
+    let drawn;
+    widget.drawWidget = function (ctx, options) { drawn = { value: this.value, y: this.y, ...options }; };
     let value = "Custom:one";
     let writes = 0;
     Object.defineProperty(widget, "value", {
@@ -202,6 +204,11 @@ test("native combos without draw render guide labels without writing their stabl
     });
     widget.options.getOptionLabel = (option) => `Original ${option}`;
     s.context.setupGuideMenu(widget, s.node);
+    assert.equal(typeof widget.draw, "function");
+    widget.draw({}, s.node, 400, 1, 20);
+    assert.deepEqual(drawn, { value: "Custom:one", y: 1, width: 400, showText: true });
+    const menu = await s.open(widget);
+    assert.equal(menu.at(-1).content, "+ Add a prompt guide");
     assert.equal(widget.options.getOptionLabel(widget.value), "Film");
     assert.equal(widget.options.getOptionLabel("None"), "Original None");
     assert.equal(widget.options.getOptionLabel("MiniMax H3 - Pika"), "Original MiniMax H3 - Pika");

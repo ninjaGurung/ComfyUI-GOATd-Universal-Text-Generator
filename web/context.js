@@ -2,6 +2,14 @@ import { app } from "../../../scripts/app.js";
 
 const stateKey = Symbol("goatContext");
 
+function createSession() {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function contextLimit(node) {
     if (!node.graph) return 0;
     const slot = node.inputs?.findIndex((input) => input.name === "settings") ?? -1;
@@ -17,11 +25,11 @@ function contextLimit(node) {
 function ensureSession(node) {
     const session = node[stateKey].session;
     if (!session.value || node.graph?._nodes?.some((other) => other !== node && other[stateKey]?.session.value === session.value)) {
-        session.value = crypto.randomUUID();
+        session.value = createSession();
     }
 }
 
-function updateLayout(node) {
+function updateLayout(node, resize = true) {
     const state = node[stateKey];
     if (node.widgets.at(-1) !== state.footer) {
         node.widgets.splice(node.widgets.indexOf(state.footer), 1);
@@ -35,9 +43,39 @@ function updateLayout(node) {
     for (const widget of [state.resetSpacing, state.resetButton, state.footer]) widget.hidden = !(limit > 0);
     if (wasEnabled !== (limit > 0)) {
         const minimum = node.computeSize();
-        node.setSize([Math.max(node.size[0], minimum[0]), Math.max(minimum[1], node.size[1] + (limit > 0 ? 60 : -60))]);
+        const height = resize ? node.size[1] + (limit > 0 ? 60 : -60) : node.size[1];
+        node.setSize([Math.max(node.size[0], minimum[0]), Math.max(minimum[1], height)]);
     }
+    state.footer.callback?.();
     node.setDirtyCanvas(true, true);
+}
+
+export function refreshContextControls(node) {
+    for (const generator of node.graph?._nodes ?? []) {
+        if (generator[stateKey]) updateLayout(generator);
+    }
+}
+
+function drawUsage(ctx, node, width, y, height) {
+    const state = node[stateKey];
+    if (!(state.limit > 0)) return;
+    y += height / 2;
+    ctx.save();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#555";
+    ctx.beginPath();
+    ctx.arc(22, y, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = state.used >= state.limit ? "#f59e0b" : "#60a5fa";
+    ctx.beginPath();
+    ctx.arc(22, y, 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, state.used / state.limit));
+    ctx.stroke();
+    ctx.fillStyle = "#bbb";
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`Context ~${state.used.toLocaleString()} / ${state.limit.toLocaleString()} tokens`, 38, y);
+    ctx.restore();
 }
 
 function newContext(node) {
@@ -47,11 +85,12 @@ function newContext(node) {
         const widget = node.widgets.find((item) => item.name === name);
         if (!widget) continue;
         widget.value = "";
-        widget.element?.dispatchEvent(new Event("input", { bubbles: true }));
+        (widget.element?.querySelector("textarea") ?? widget.element)?.dispatchEvent(new Event("input", { bubbles: true }));
     }
     node.properties ??= {};
     node.properties.goat_generated_text = "";
     state.used = 0;
+    state.footer.callback?.();
     node.setDirtyCanvas(true, true);
 }
 
@@ -64,7 +103,7 @@ app.registerExtension({
             const result = created?.apply(this, arguments);
             const session = this.widgets.find((widget) => widget.name === "context_session");
             const reset = this.widgets.find((widget) => widget.name === "context_reset");
-            session.value ||= crypto.randomUUID();
+            session.value ||= createSession();
             for (const widget of [session, reset]) {
                 widget.hidden = true;
                 widget.computeSize = () => [0, -4];
@@ -87,7 +126,7 @@ app.registerExtension({
                 name: "context_usage", type: "goat_context_usage", value: "", serialize: false,
                 options: { serialize: false }, hidden: true,
                 computeSize: () => [0, state.limit > 0 ? 24 : -4],
-                draw: () => {},
+                draw: drawUsage,
             });
             // Nonserialized controls can precede the prompt without moving saved values.
             for (const widget of [state.resetSpacing, state.resetButton]) this.widgets.splice(this.widgets.indexOf(widget), 1);
@@ -100,7 +139,7 @@ app.registerExtension({
             const state = this[stateKey];
             if (state) {
                 ensureSession(this);
-                updateLayout(this);
+                updateLayout(this, false);
             }
             return result;
         };
@@ -111,36 +150,20 @@ app.registerExtension({
             updateLayout(this);
             return result;
         };
-        const foreground = nodeType.prototype.onDrawForeground;
-        nodeType.prototype.onDrawForeground = function (ctx) {
+        const connectionsChanged = nodeType.prototype.onConnectionsChange;
+        nodeType.prototype.onConnectionsChange = function () {
+            const result = connectionsChanged?.apply(this, arguments);
             updateLayout(this);
-            const result = foreground?.apply(this, arguments);
-            const state = this[stateKey];
-            if (!(state.limit > 0) || this.flags?.collapsed) return result;
-            const x = 22, y = this.size[1] - 16;
-            ctx.save();
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = "#555";
-            ctx.beginPath();
-            ctx.arc(x, y, 8, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.strokeStyle = state.used >= state.limit ? "#f59e0b" : "#60a5fa";
-            ctx.beginPath();
-            ctx.arc(x, y, 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, state.used / state.limit));
-            ctx.stroke();
-            ctx.fillStyle = "#bbb";
-            ctx.font = "12px sans-serif";
-            ctx.textAlign = "left";
-            ctx.textBaseline = "middle";
-            ctx.fillText(`Context ~${state.used.toLocaleString()} / ${state.limit.toLocaleString()} tokens`, 38, y);
-            ctx.restore();
             return result;
         };
         const executed = nodeType.prototype.onExecuted;
         nodeType.prototype.onExecuted = function (message) {
             const result = executed?.apply(this, arguments);
             const usage = message?.context_usage?.[0];
-            if (usage) this[stateKey].used = Number(usage.used) || 0;
+            if (usage) {
+                this[stateKey].used = Number(usage.used) || 0;
+                this[stateKey].footer.callback?.();
+            }
             updateLayout(this);
             this.setDirtyCanvas(true, true);
             return result;

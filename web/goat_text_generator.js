@@ -11,10 +11,7 @@ import "./context.js";
 const generatorTypes = new Set(["GOATUniversalTextGenerator", "UniversalLLM"]);
 const previewName = "generated_text";
 const inputOrderPending = Symbol("goatInputOrderPending");
-const copyControl = Symbol("goatCopyControl");
-const clearControl = Symbol("goatClearControl");
-const titleControl = Symbol("goatTitleControl");
-const headerControl = Symbol("goatHeaderControl");
+const textAreaControl = Symbol("goatTextArea");
 const copyResetTimer = Symbol("goatCopyResetTimer");
 const areaTitles = { prompt_idea: "Prompt Idea", system_prompt: "System Prompt", generated_text: "Output" };
 
@@ -79,115 +76,164 @@ function scheduleInputOrder(node) {
     });
 }
 
-function mountTextButtons(node, widget) {
-    const textarea = widget.element;
-    const parent = textarea?.parentElement;
-    if (!parent) return;
-    let header = widget[headerControl];
-    if (!header) {
-        header = document.createElement("div");
-        Object.assign(header.style, {
-            position: "absolute", top: "0", left: "0", right: "0", height: "28px",
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "0 8px", boxSizing: "border-box", zIndex: "2", pointerEvents: "none",
-        });
-        widget[headerControl] = header;
-    }
-    let title = widget[titleControl];
-    if (!title) {
-        title = document.createElement("div");
-        title.textContent = areaTitles[widget.name];
-        title.setAttribute("role", "heading");
-        title.setAttribute("aria-level", "3");
-        Object.assign(title.style, {
-            fontSize: "12px", fontWeight: "600", color: "var(--input-text, #ddd)",
-        });
-        widget[titleControl] = title;
-    }
-    if (title.parentElement !== header) header.appendChild(title);
-    let button = widget[copyControl];
-    if (!button) {
-        button = document.createElement("button");
-        button.type = "button";
-        button.textContent = "⧉";
-        const label = `Copy ${widget.name.replaceAll("_", " ")}`;
-        button.title = label;
-        button.setAttribute("aria-label", label);
-        Object.assign(button.style, {
-            width: "24px", height: "24px", padding: "0", cursor: "pointer",
-            borderRadius: "4px", border: "1px solid var(--border-color, #555)",
-            background: "var(--comfy-input-bg, #222)", color: "var(--input-text, #ddd)",
-            pointerEvents: "auto",
-        });
-        button.onpointerdown = (event) => event.stopPropagation();
-        button.onclick = async (event) => {
-            event.stopPropagation();
-            try {
-                await navigator.clipboard.writeText(String(widget.value ?? ""));
-                if (!button.parentElement) return;
-                clearTimeout(widget[copyResetTimer]);
-                button.textContent = "✓";
-                button.title = "Copied";
-                widget[copyResetTimer] = setTimeout(() => {
-                    button.textContent = "⧉";
-                    button.title = label;
-                    widget[copyResetTimer] = null;
-                }, 5000);
-            } catch {
-                button.textContent = "⧉";
-                button.title = "Clipboard unavailable. Select and copy the text.";
-            }
-        };
-        widget[copyControl] = button;
-    }
-    let clear = widget[clearControl];
-    if (!clear) {
-        clear = document.createElement("button");
-        clear.type = "button";
-        clear.textContent = "×";
-        const label = `Clear ${areaTitles[widget.name]}`;
-        clear.title = label;
-        clear.setAttribute("aria-label", label);
-        clear.style.cssText = button.style.cssText;
-        Object.assign(clear.style, { marginLeft: "auto", marginRight: "4px" });
-        clear.onpointerdown = (event) => event.stopPropagation();
-        clear.onclick = (event) => {
-            event.stopPropagation();
-            widget.value = "";
-            textarea.dispatchEvent(new Event("input", { bubbles: true }));
-            if (widget.name === previewName) {
-                node.properties ??= {};
-                node.properties.goat_generated_text = "";
-            }
-            clearTimeout(widget[copyResetTimer]);
-            widget[copyResetTimer] = null;
-            button.textContent = "⧉";
-            button.title = `Copy ${widget.name.replaceAll("_", " ")}`;
-            textarea.focus();
-            node.setDirtyCanvas(true, true);
-        };
-        widget[clearControl] = clear;
-    }
-    if (clear.parentElement !== header) header.appendChild(clear);
-    if (button.parentElement !== header) header.appendChild(button);
-    if (header.parentElement !== parent) {
-        if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
-        textarea.style.marginTop = "28px";
-        textarea.style.height = "calc(100% - 28px)";
-        parent.appendChild(header);
+function syncTextAreas(node) {
+    for (const widget of node.widgets ?? []) {
+        if (["prompt_idea", "system_prompt"].includes(widget.name)) mountTagSuggestions(node, widget);
     }
 }
 
-function setMinimumHeight(widget, height) {
-    widget.options ??= {};
-    widget.options.getMinHeight = () => height;
-    const computeSize = widget.computeSize;
-    widget.computeSize = function (width) {
-        const size = computeSize?.call(this, width) ?? [width, height];
-        return size[1] < 0 ? size : [size[0], Math.max(size[1], height)];
+function setupTextArea(node, widget, defaultHeight) {
+    if (widget[textAreaControl]) return;
+    const textarea = widget.element;
+    const panel = document.createElement("div");
+    Object.assign(panel.style, {
+        position: "relative", display: "flex", flexDirection: "column", width: "100%",
+        boxSizing: "border-box", overflow: "hidden", flex: "none",
+    });
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+        height: "28px", flex: "0 0 28px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 8px", boxSizing: "border-box",
+    });
+    const title = document.createElement("div");
+    title.textContent = areaTitles[widget.name];
+    title.setAttribute("role", "heading");
+    title.setAttribute("aria-level", "3");
+    Object.assign(title.style, {
+        fontSize: "12px", fontWeight: "600", color: "var(--input-text, #ddd)",
+    });
+    header.appendChild(title);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "⧉";
+    const label = `Copy ${widget.name.replaceAll("_", " ")}`;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    Object.assign(button.style, {
+        width: "24px", height: "24px", padding: "0", cursor: "pointer",
+        borderRadius: "4px", border: "1px solid var(--border-color, #555)",
+        background: "var(--comfy-input-bg, #222)", color: "var(--input-text, #ddd)",
+        pointerEvents: "auto",
+    });
+    button.onpointerdown = (event) => event.stopPropagation();
+    button.onclick = async (event) => {
+        event.stopPropagation();
+        try {
+            await navigator.clipboard.writeText(String(widget.value ?? ""));
+            if (!button.parentElement) return;
+            clearTimeout(widget[copyResetTimer]);
+            button.textContent = "✓";
+            button.title = "Copied";
+            widget[copyResetTimer] = setTimeout(() => {
+                button.textContent = "⧉";
+                button.title = label;
+                widget[copyResetTimer] = null;
+            }, 5000);
+        } catch {
+            button.textContent = "⧉";
+            button.title = "Clipboard unavailable. Select and copy the text.";
+        }
     };
-    widget.element?.setAttribute("aria-label", widget.name.replaceAll("_", " "));
-    if (widget.element) widget.element.style.overflowY = "auto";
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.textContent = "×";
+    const clearLabel = `Clear ${areaTitles[widget.name]}`;
+    clear.title = clearLabel;
+    clear.setAttribute("aria-label", clearLabel);
+    clear.style.cssText = button.style.cssText;
+    Object.assign(clear.style, { marginLeft: "auto", marginRight: "4px" });
+    clear.onpointerdown = (event) => event.stopPropagation();
+    clear.onclick = (event) => {
+        event.stopPropagation();
+        widget.value = "";
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        if (widget.name === previewName) {
+            node.properties ??= {};
+            node.properties.goat_generated_text = "";
+        }
+        clearTimeout(widget[copyResetTimer]);
+        widget[copyResetTimer] = null;
+        button.textContent = "⧉";
+        button.title = `Copy ${widget.name.replaceAll("_", " ")}`;
+        textarea.focus();
+        node.setDirtyCanvas(true, true);
+    };
+    header.append(clear, button);
+    const handle = document.createElement("div");
+    handle.setAttribute("role", "separator");
+    handle.setAttribute("aria-orientation", "horizontal");
+    handle.setAttribute("aria-label", `Resize ${areaTitles[widget.name]}`);
+    handle.setAttribute("aria-valuemin", "80");
+    handle.tabIndex = 0;
+    handle.title = "Drag to resize vertically, or use Up/Down arrows";
+    Object.assign(handle.style, {
+        flex: "0 0 12px", cursor: "ns-resize", touchAction: "none",
+        display: "flex", alignItems: "center", justifyContent: "center",
+    });
+    const grip = document.createElement("span");
+    Object.assign(grip.style, { width: "28px", height: "3px", borderRadius: "2px", background: "var(--border-color, #666)", pointerEvents: "none" });
+    handle.appendChild(grip);
+    Object.assign(textarea.style, {
+        flex: "1 1 0", width: "100%", height: "0", minHeight: "0", margin: "0",
+        boxSizing: "border-box", resize: "none", overflowY: "auto",
+    });
+    textarea.setAttribute("aria-label", areaTitles[widget.name]);
+    panel.append(header, textarea, handle);
+    // A custom DOM type keeps the same controls in classic and Nodes 2.0.
+    widget.type = "goat_text_area";
+    widget.element = panel;
+    widget.options ??= {};
+    widget.options.getValue = () => textarea.value;
+    widget.options.setValue = (value) => { textarea.value = value; };
+    widget.options.margin = 0;
+    widget.options.selectOn = ["focusin", "click"];
+    let height = defaultHeight;
+    widget.options.getMinHeight = widget.options.getMaxHeight = () => height;
+    widget.computeSize = (width) => [width, height];
+    function setHeight(value, save = false) {
+        if (!Number.isFinite(value)) return;
+        const previous = height;
+        height = Math.max(80, Math.round(value));
+        Object.assign(panel.style, { height: `${height}px`, minHeight: `${height}px`, maxHeight: `${height}px` });
+        handle.setAttribute("aria-valuenow", String(height));
+        if (save) {
+            node.properties ??= {};
+            node.properties.goat_text_heights ??= {};
+            node.properties.goat_text_heights[widget.name] = height;
+            const minimum = node.computeSize();
+            node.setSize([node.size[0], Math.max(minimum[1], node.size[1] + height - previous)]);
+            node.setDirtyCanvas(true, true);
+        }
+    }
+    let drag;
+    handle.onpointerdown = (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        drag = { y: event.clientY, height, scale: panel.getBoundingClientRect().height / panel.offsetHeight || 1, id: event.pointerId };
+        handle.setPointerCapture(event.pointerId);
+    };
+    handle.onpointermove = (event) => {
+        event.stopPropagation();
+        if (drag && event.pointerId === drag.id) setHeight(drag.height + (event.clientY - drag.y) / drag.scale, true);
+    };
+    handle.onpointerup = handle.onpointercancel = (event) => {
+        event.stopPropagation();
+        if (!drag || event.pointerId !== drag.id) return;
+        drag = null;
+        handle.releasePointerCapture(event.pointerId);
+    };
+    handle.onlostpointercapture = () => { drag = null; };
+    handle.onkeydown = (event) => {
+        if (!["ArrowUp", "ArrowDown"].includes(event.key)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setHeight(height + (event.key === "ArrowDown" ? 20 : -20), true);
+    };
+    widget[textAreaControl] = { panel, setHeight };
+    setHeight(node.properties?.goat_text_heights?.[widget.name] ?? defaultHeight);
+    if (!textarea.readOnly) mountTagSuggestions(node, widget);
 }
 
 function createPreview(node) {
@@ -201,7 +247,7 @@ function createPreview(node) {
     widget.element.placeholder = "Generated text appears here after execution.";
     widget.element.setAttribute("aria-label", "Generated text");
     widget.element.style.overflowY = "auto";
-    setMinimumHeight(widget, 320);
+    setupTextArea(node, widget, 320);
     return widget;
 }
 
@@ -220,8 +266,8 @@ app.registerExtension({
         nodeType.prototype.onNodeCreated = function () {
             const result = onNodeCreated?.apply(this, arguments);
             for (const widget of this.widgets ?? []) {
-                if (widget.name === "prompt_idea") setMinimumHeight(widget, 240);
-                if (widget.name === "system_prompt") setMinimumHeight(widget, 160);
+                if (widget.name === "prompt_idea") setupTextArea(this, widget, 240);
+                if (widget.name === "system_prompt") setupTextArea(this, widget, 160);
             }
             restorePreview(this);
             setupGuideMenu(this.widgets?.find((widget) => widget.name === "prompt_guide"), this);
@@ -235,10 +281,15 @@ app.registerExtension({
         const onDrawForeground = nodeType.prototype.onDrawForeground;
         nodeType.prototype.onDrawForeground = function () {
             const result = onDrawForeground?.apply(this, arguments);
-            for (const widget of this.widgets ?? []) {
-                if (["prompt_idea", "system_prompt", previewName].includes(widget.name)) mountTextButtons(this, widget);
-                if (["prompt_idea", "system_prompt"].includes(widget.name)) mountTagSuggestions(this, widget);
-            }
+            syncTextAreas(this);
+            return result;
+        };
+
+        const onAdded = nodeType.prototype.onAdded;
+        nodeType.prototype.onAdded = function () {
+            const result = onAdded?.apply(this, arguments);
+            syncTextAreas(this);
+            setupGuideMenu(this.widgets?.find((widget) => widget.name === "prompt_guide"), this);
             return result;
         };
 
@@ -251,10 +302,7 @@ app.registerExtension({
                 removeGuideMenu(widget);
                 clearTimeout(widget[copyResetTimer]);
                 widget[copyResetTimer] = null;
-                widget[copyControl]?.remove();
-                widget[clearControl]?.remove();
-                widget[titleControl]?.remove();
-                widget[headerControl]?.remove();
+                widget[textAreaControl]?.panel.remove();
             }
             return onRemoved?.apply(this, arguments);
         };
@@ -278,6 +326,19 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function () {
             const result = onConfigure?.apply(this, arguments);
             restorePreview(this);
+            for (const widget of this.widgets ?? []) {
+                const height = this.properties?.goat_text_heights?.[widget.name];
+                if (height != null) widget[textAreaControl]?.setHeight(height);
+            }
+            syncTextAreas(this);
+            if (nodeData.name === "GOATUniversalTextGenerator") scheduleInputOrder(this);
+            return result;
+        };
+
+        const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+        nodeType.prototype.onConnectionsChange = function () {
+            const result = onConnectionsChange?.apply(this, arguments);
+            syncTextAreas(this);
             if (nodeData.name === "GOATUniversalTextGenerator") scheduleInputOrder(this);
             return result;
         };
@@ -286,12 +347,6 @@ app.registerExtension({
             const onInputAdded = nodeType.prototype.onInputAdded;
             nodeType.prototype.onInputAdded = function () {
                 const result = onInputAdded?.apply(this, arguments);
-                scheduleInputOrder(this);
-                return result;
-            };
-            const onConnectionsChange = nodeType.prototype.onConnectionsChange;
-            nodeType.prototype.onConnectionsChange = function () {
-                const result = onConnectionsChange?.apply(this, arguments);
                 scheduleInputOrder(this);
                 return result;
             };

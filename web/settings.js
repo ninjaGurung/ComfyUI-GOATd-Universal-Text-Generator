@@ -1,5 +1,6 @@
 import { app } from "../../../scripts/app.js";
 import { goatFetch, keyReference, keyValue } from "./security.js";
+import { refreshContextControls } from "./context.js";
 
 const defaults = {
     OpenRouter: "https://openrouter.ai/api/v1",
@@ -22,12 +23,14 @@ const generationDefaults = {
 };
 const localDefaults = { temperature: 0.7, top_p: 0.95, top_k: 40, min_p: 0.05, repetition_penalty: 1.1, thinking: "disabled" };
 const stateKey = Symbol("goatSettings");
+let nextModelListId = 0;
 
 function syncContext(node) {
     const state = node[stateKey];
     const limit = Number(state.widgets.context_window.value);
     if (state.widgets.remember_context) state.widgets.remember_context.value = limit > 0;
     if (limit > 0) state.contextWindows.set(state.provider, limit);
+    refreshContextControls(node);
     node.setDirtyCanvas(true, true);
 }
 
@@ -64,7 +67,7 @@ function editValue(node, widget, secret) {
         status.setAttribute("role", "status");
         status.style.cssText = "font-size:12px;margin:0 0 8px;overflow-wrap:anywhere";
         const list = document.createElement("div");
-        list.id = `goat-models-${crypto.randomUUID()}`;
+        list.id = `goat-models-${++nextModelListId}`;
         list.setAttribute("role", "listbox");
         list.setAttribute("aria-label", "Available models");
         list.style.cssText = "max-height:280px;overflow:auto;border:1px solid var(--border-color,#555);margin-bottom:12px";
@@ -173,6 +176,11 @@ function setupEditor(node, widget, secret) {
             ctx.textAlign = "right";
             ctx.fillText(keyValue(this) ? "*****..." : "", width - 25, y + height / 2);
             ctx.restore();
+        };
+    } else if (!widget.draw && widget.drawWidget) {
+        widget.draw = function (ctx, node, width, y) {
+            this.y = y;
+            this.drawWidget(ctx, { width, showText: true });
         };
     }
     widget.onPointerDown = function (pointer) {
@@ -368,6 +376,12 @@ app.registerExtension({
                 syncContext(this);
                 applyAdvanced(this);
             }
+            return result;
+        };
+        const connectionsChanged = nodeType.prototype.onConnectionsChange;
+        nodeType.prototype.onConnectionsChange = function () {
+            const result = connectionsChanged?.apply(this, arguments);
+            refreshContextControls(this);
             return result;
         };
         const removed = nodeType.prototype.onRemoved;

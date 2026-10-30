@@ -28,6 +28,7 @@ function setup(value = "", active = true) {
         dispatchEvent(event) { for (const listener of this.listeners.get(event.type) ?? []) listener(event); this[`on${event.type}`]?.(event); }
         focus() { document.activeElement = this; }
         contains(element) { return element === this || this.children.some((child) => child.contains(element)); }
+        querySelector(tag) { return this.children.find((child) => child.tagName === tag.toUpperCase()) ?? null; }
         getBoundingClientRect() { return { left: 100, top: 100, right: 600, bottom: 340, width: 500, height: 240 }; }
         setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
         setRangeText(text, start, end) { this.value = this.value.slice(0, start) + text + this.value.slice(end); this.setSelectionRange(start + text.length, start + text.length); }

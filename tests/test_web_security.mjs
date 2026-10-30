@@ -52,7 +52,9 @@ assert.equal(requests.every(({ path }) => path === "/goat/credentials"), true);
 assert.equal(requests.every(({ options }) => options.headers["X-GOAT-Request"] === "1"), true);
 
 const settings = new vm.SourceTextModule(await readFile(new URL("../web/settings.js", import.meta.url), "utf8"), { context });
-await settings.link((specifier) => specifier === "./security.js" ? module : new vm.SourceTextModule("export const app = globalThis.app", { context }));
+await settings.link((specifier) => specifier === "./security.js" ? module : new vm.SourceTextModule(
+    specifier === "./context.js" ? "export function refreshContextControls() {}" : "export const app = globalThis.app", { context },
+));
 await settings.evaluate();
 class SettingsNode {
     constructor() {

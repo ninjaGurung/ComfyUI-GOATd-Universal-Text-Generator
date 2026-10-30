@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { webcrypto } from "node:crypto";
 
 function mockDocument() {
     class Element {
@@ -21,16 +20,17 @@ function mockDocument() {
     return { createElement: (tag) => new Element(tag), body: new Element("body") };
 }
 
-function setup(fetchApi = async () => ({ ok: true, json: async () => ({ models: ["z", "a", "z"] }) })) {
+function setup(fetchApi = async () => ({ ok: true, json: async () => ({ models: ["z", "a", "z"] }) }), nativeModel = false) {
     let extension;
+    const refreshed = [];
     const document = mockDocument();
-    const context = { app: { registerExtension(value) { extension = value; } }, goatFetch: fetchApi, keyReference: async (values) => values.api_key, keyValue: (widget) => widget?.value ?? "", AbortController, LiteGraph: {}, document, crypto: webcrypto };
+    const context = { app: { registerExtension(value) { extension = value; } }, goatFetch: fetchApi, keyReference: async (values) => values.api_key, keyValue: (widget) => widget?.value ?? "", refreshContextControls: (node) => refreshed.push(node), AbortController, LiteGraph: {}, document, crypto: {} };
     const source = readFileSync(new URL("../web/settings.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "");
     vm.runInNewContext(source, context);
     class Node {
         constructor() {
             this.widgets = Object.entries({ provider: "OpenRouter", model: "custom", api_key: "secret-key", api_key_env: "SECRET_ENV", base_url: "", thinking: "auto", reasoning_effort: "auto", seed: 1, control_after_generate: "fixed", json_output: false, context_window: 0, temperature: 0.7, top_p: -1, top_k: -1, min_p: -1, repetition_penalty: -1, frequency_penalty: 0, presence_penalty: 0, max_output_tokens: 1024, timeout_seconds: 120, stop_sequences: "", force_regenerate: false, video_mode: "auto", video_frame_count: 0, remember_context: false })
-                .map(([name, value]) => ({ name, value, type: "string", computeSize: () => [300, 20], draw() {} }));
+                .map(([name, value]) => ({ name, value, type: "string", computeSize: () => [300, 20], draw: nativeModel && name === "model" ? undefined : () => {}, drawWidget: nativeModel === true ? () => {} : undefined }));
             this.size = [300, 300];
         }
         addWidget(type, name, value, callback, options) {
@@ -46,8 +46,25 @@ function setup(fetchApi = async () => ({ ok: true, json: async () => ({ models: 
     const node = new Node();
     const original = [...node.widgets];
     node.onNodeCreated();
-    return { node, original, document, widget: (name) => node.widgets.find((widget) => widget.name === name) };
+    return { node, original, document, refreshed, widget: (name) => node.widgets.find((widget) => widget.name === name) };
 }
+
+test("Nodes 2.0 model widgets keep the searchable model editor", () => {
+    const { widget, document } = setup(undefined, true);
+    const model = widget("model");
+    assert.equal(typeof model.draw, "function");
+    let drawn = false;
+    model.drawWidget = () => { drawn = true; };
+    model.draw({}, {}, 300, 20, 20);
+    assert.equal(drawn, true);
+    const { dialog } = openEditor(model, document);
+    assert.equal(dialog.open, true);
+});
+
+test("classic model widgets without drawWidget keep the built-in renderer", () => {
+    const { widget } = setup(undefined, "classic");
+    assert.equal(widget("model").draw, undefined);
+});
 
 function openEditor(widget, document) {
     const pointer = { eDown: { button: 0 } };
@@ -96,6 +113,20 @@ test("advanced expansion restores original behavior and survives configuration",
     assert.equal(widget("seed").hidden, undefined);
     assert.equal(widget("json_output").hidden, undefined);
     assert.equal(widget("json_output").value, false);
+});
+
+test("memory edits and connection changes refresh generator controls without drawing", () => {
+    const { node, widget, refreshed } = setup();
+    const count = refreshed.length;
+    widget("remember_context").value = true;
+    widget("remember_context").callback();
+    assert.equal(widget("context_window").value, 8192);
+    assert.equal(refreshed.length, count + 1);
+    widget("context_window").value = 2048;
+    widget("context_window").callback();
+    node.onConnectionsChange();
+    assert.equal(refreshed.length, count + 3);
+    assert.ok(refreshed.every((value) => value === node));
 });
 
 test("provider changes automatically refresh with provider-owned credentials and preserve custom URLs", async () => {

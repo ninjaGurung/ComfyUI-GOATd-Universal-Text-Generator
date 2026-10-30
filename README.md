@@ -98,6 +98,8 @@ Type `@` in either prompt field to select a connected reference, such as `@image
 
 Suggestions include image thumbnails, video first frames, and audio waveform symbols. Hover or focus a tag to preview its reference. Media without an available preview shows a placeholder.
 
+Classic nodes and Nodes 2.0 use the same text controls. Drag the bar below each text area to resize it vertically, or focus the bar and use Up/Down arrows. Heights are saved with the workflow; defaults keep Prompt Idea / System Prompt / Output at 240 / 160 / 320 pixels.
+
 Media support depends on both provider and model. Video frame mode sends visuals without the soundtrack; native video/audio requires a compatible endpoint and model. ComfyUI Local reads video as sampled frames.
 
 ## Settings fields

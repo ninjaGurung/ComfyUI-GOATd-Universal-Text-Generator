@@ -21,6 +21,7 @@ function updateCatalog(result) {
     revision++;
     for (const [widget, state] of states) {
         widget.options.values = [...state.builtins, ...catalog.guides.map((guide) => guide.value)];
+        widget.triggerDraw?.();
         state.node.setDirtyCanvas(true, true);
     }
 }
@@ -166,6 +167,11 @@ export function setupGuideMenu(widget, node) {
     const getOptionLabel = widget.options.getOptionLabel;
     widget.options.getOptionLabel = (value) => catalog.guides.find((guide) => guide.value === value)?.name
         ?? getOptionLabel?.(value) ?? String(value ?? "");
+    // Nodes 2.0 must use the custom widget adapter to preserve the guide menu.
+    if (!widget.draw && widget.drawWidget) widget.draw = function (ctx, node, width, y) {
+        this.y = y;
+        this.drawWidget(ctx, { width, showText: true });
+    };
     const onPointerDown = widget.onPointerDown;
     widget.onPointerDown = function (pointer, node, canvas) {
         const event = pointer.eDown;

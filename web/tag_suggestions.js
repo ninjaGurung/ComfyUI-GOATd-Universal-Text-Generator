@@ -27,7 +27,7 @@ function prefixAtCaret(textarea) {
 }
 
 export function mountTagSuggestions(node, widget) {
-    const textarea = widget.element;
+    const textarea = widget.element?.querySelector("textarea") ?? widget.element;
     if (!textarea || textarea.readOnly) return;
     let state = widget[suggestionsState];
     if (state && state.textarea !== textarea) {
