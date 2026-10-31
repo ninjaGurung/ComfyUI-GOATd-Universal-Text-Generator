@@ -178,13 +178,58 @@ def rename_folder(folder_id, name):
         return {**catalog, "formats": list(FORMATS)}
 
 
-def load_guide(value):
+def _guide(catalog, value):
     if not isinstance(value, str) or not value.startswith("Custom:") or not _ID.fullmatch(value[7:]):
         raise ValueError("Unknown custom prompt guide. Choose an item from the dropdown.")
+    guide = next((item for item in catalog["guides"] if item["value"] == value), None)
+    if guide is None:
+        raise ValueError("Custom prompt guide was not found. Import it on this ComfyUI installation first.")
+    return guide
+
+
+def rename_guide(value, name):
+    name = _name(name, "guide")
     with _LOCK:
-        guide = next((item for item in _catalog()["guides"] if item["value"] == value), None)
-        if guide is None:
-            raise ValueError("Custom prompt guide was not found. Import it on this ComfyUI installation first.")
+        catalog = _catalog()
+        guide = _guide(catalog, value)
+        if any(item["value"] != value and item["folder"] == guide["folder"] and item["name"].casefold() == name.casefold() for item in catalog["guides"]):
+            raise ValueError("A guide with that name already exists in this folder.")
+        guide["name"] = name
+        _save_catalog(catalog)
+        return {**catalog, "formats": list(FORMATS)}
+
+
+def delete_guide(value):
+    with _LOCK:
+        catalog = _catalog()
+        _guide(catalog, value)
+        path = _path(value[7:] + ".md")
+        updated = {**catalog, "guides": [item for item in catalog["guides"] if item["value"] != value]}
+        _save_catalog(updated)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            _save_catalog(catalog)
+            raise
+        return {**updated, "formats": list(FORMATS)}
+
+
+def delete_folder(folder_id):
+    with _LOCK:
+        catalog = _catalog()
+        if not any(folder["id"] == folder_id for folder in catalog["folders"]):
+            raise ValueError("Unknown custom folder. Bundled folders cannot be deleted.")
+        catalog["folders"] = [folder for folder in catalog["folders"] if folder["id"] != folder_id]
+        for guide in catalog["guides"]:
+            if guide["folder"] == folder_id:
+                guide["folder"] = ""
+        _save_catalog(catalog)
+        return {**catalog, "formats": list(FORMATS)}
+
+
+def load_guide(value):
+    with _LOCK:
+        guide = _guide(_catalog(), value)
         path = _path(value[7:] + ".md")
         if not path.is_file():
             raise ValueError("Custom prompt-guide text is missing. Restore it in prompt_guides/custom.")
@@ -249,7 +294,49 @@ async def update_folder(request):
     return web.json_response(result)
 
 
+async def update_guide(request):
+    try:
+        values = await request.json()
+        if not isinstance(values, dict):
+            raise ValueError("Supply a custom guide value and name.")
+        result = await asyncio.to_thread(rename_guide, values.get("value"), values.get("name"))
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+    except OSError:
+        return web.json_response({"error": "Could not rename the guide. Check write access to prompt_guides/custom."}, status=500)
+    return web.json_response(result)
+
+
+async def remove_guide(request):
+    try:
+        values = await request.json()
+        if not isinstance(values, dict):
+            raise ValueError("Supply a custom guide value.")
+        result = await asyncio.to_thread(delete_guide, values.get("value"))
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+    except OSError:
+        return web.json_response({"error": "Could not delete the guide. Check write access to prompt_guides/custom."}, status=500)
+    return web.json_response(result)
+
+
+async def remove_folder(request):
+    try:
+        values = await request.json()
+        if not isinstance(values, dict):
+            raise ValueError("Supply a custom folder id.")
+        result = await asyncio.to_thread(delete_folder, values.get("id"))
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+    except OSError:
+        return web.json_response({"error": "Could not delete the folder. Check write access to prompt_guides/custom."}, status=500)
+    return web.json_response(result)
+
+
 def register_routes(routes):
     routes.get("/goat/prompt-guides")(protect_route(get_guides))
     routes.post("/goat/prompt-guides")(protect_route(import_guide))
+    routes.patch("/goat/prompt-guides")(protect_route(update_guide))
+    routes.delete("/goat/prompt-guides")(protect_route(remove_guide))
     routes.patch("/goat/prompt-guides/folders")(protect_route(update_folder))
+    routes.delete("/goat/prompt-guides/folders")(protect_route(remove_folder))
