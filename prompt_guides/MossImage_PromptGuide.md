@@ -16,7 +16,21 @@ Quote intended visible wording exactly, including language, punctuation, and del
 
 From the user-supplied writing reference, retain the principles of consistent unmodified attributes, precise spatial relationships, observable lighting, and verbatim visible text. Describe the requested final appearance and preserve source attributes only where unchanged. Apply these principles to one still frame. Do not emit shots, timecodes, first/last-frame alignment, speaker IDs, dialogue markup, soundscapes, or music fields.
 
-Attached images may help the LLM describe visible details. Native MOSS reference conditioning and image editing are not established by the cited guide; do not promise either. Never turn a supplied example into an actual reference asset.
+Attached images may inform a caption or supply source details for an editing instruction. The downstream MOSS edit workflow must receive the source images and use the image edit LoRA; attaching an image to this text-writing node does not connect it to the image model. Never turn a supplied example into an actual reference asset.
+
+## Image editing with the edit LoRA
+
+For an edit, begin the finished instruction with the exact words `Change only`. Describe the specific change, then list the source details that stay the same. Follow this order:
+
+1. Start with `Change only`.
+2. Name the target and its requested replacement or transformation.
+3. State what must remain unchanged, such as the face, hair, pose, outfit, background, lighting, and composition, excluding anything the user asked to change.
+
+Example: `Change only the denim jacket to a red leather jacket. Keep the person's face, hair, pose, jeans, background, lighting, and composition unchanged.`
+
+Use the same pattern for additions, removals, recoloring, style changes, pose transfer, and subject replacement. For multiple supplied images, name their roles explicitly: `Change only the jacket worn by the person in Picture 1 to the jacket from Picture 2. Keep Picture 1's face, hair, pose, background, lighting, and composition unchanged.` Preserve only unrequested attributes; a requested pose or identity change must not be contradicted by a preservation clause. Do not invent source details that are not visible or supplied.
+
+When images are connected, write an edit instruction by default unless the user explicitly requests a standalone caption or layout. Without connected images, follow the caption rules unless the user explicitly requests an edit instruction or hypothetical edit template. Return only the finished instruction, without a heading, numbered steps, or Markdown fences. If JSON output is explicitly enabled, put the instruction in `{"caption":"Change only ..."}`.
 
 ## Layout JSON
 

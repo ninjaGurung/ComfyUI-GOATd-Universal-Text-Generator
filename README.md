@@ -141,14 +141,18 @@ Guides help write prompts for a target image/video model; they do not load it or
 
 | Guide | Use |
 | --- | --- |
-| **MiniMax H3** | T2V / FL2V, Ref2V, Singularity, and Pika video prompts. Pika follows the supplied T2VA, FL2VA, and Ref2VA guidance. |
+| **MiniMax H3** | T2V / FL2V, Ref2V, Singularity, and Pika video prompts. MiniMax H3 Image has separate Image Edit and Text 2 Image guides. Both return a caption in plain-text mode and add the canvas ratio in JSON mode. |
 | **Seedance 2.0 / 2.5**, **Wan 3.0** | Scene, action, camera, reference, and sound instructions. |
 | **Fibo 2** | Dev generation/editing and Edit Turbo editing. Plain language by default; VGL JSON when json_output is enabled. |
-| **MOSS Image** | Still-image captions, exact visible text, and layout JSON. |
+| **MOSS Image** | Still-image captions, exact visible text, layout JSON, and edit instructions beginning with “Change only”. |
 | **Qwen Image 2.1**, **FLUX.2 Klein 9B**, **Krea 2** | Image prompts with composition, appearance, and reference roles. |
 | **GPT Image 2.5**, **Nano Banana Pro** | Image generation/editing instructions and text requirements. |
 
-State reference roles explicitly, including first/last frames when needed. For Fibo, keep reference order consistent with the downstream image workflow. MOSS references can inform the caption; they do not enable native image editing.
+State reference roles explicitly, including first/last frames when needed. For Fibo, keep reference order consistent with the downstream image workflow. MOSS edit instructions describe the change and what stays unchanged; supply the same source images separately to the downstream MOSS workflow with the image edit LoRA.
+
+For MiniMax H3 Image Edit, connect the source images and put any explicit canvas ratio in the Prompt Idea. With JSON output enabled, Image Edit returns `expanded_caption` and `target_aspect_ratio`. Text 2 Image returns `expanded_caption` and `aspect_ratio`, using the ten ratios in the supplied Text 2 Image schema.
+
+To match the supplied Text 2 Image sampling values where supported, set **Thinking** to enabled, **Max output tokens** to 4096, **Temperature** to 1.0, **Top P** to 0.95, **Top K** to 20, **Min P** to 0.0, **Presence penalty** to 0.0, and **Repetition penalty** to 1.0. GOAT uses its provider-specific thinking controls and supports reasoning effort up to `high`. The attachment's `xhigh` and `preserve_thinking` settings are provider-specific.
 
 Choose **+ Add a prompt guide** in the guide dropdown to import Markdown, UTF-8/UTF-16 text, DOCX, or a PDF with selectable text. Name the guide and choose no folder, an existing custom folder, or **+ New folder…**. Pencil and trash buttons beside custom guides and folders let you rename or delete them; bundled entries have no edit controls. Deletion asks for confirmation. Deleting a folder keeps its guides in the main list; deleting a guide resets open nodes using it to **None**. Imports are saved as text with a catalog in `prompt_guides/custom/` and appear immediately, including after restarting. Renames preserve saved workflow selections. Copy this directory when moving custom guides to another installation.
 

@@ -17,6 +17,43 @@ spec.loader.exec_module(guides)
 
 
 class NewGuideTests(unittest.TestCase):
+    def test_minimax_image_guides_gate_json_structure(self):
+        for suffix, ratio_field in (("Image Edit", "target_aspect_ratio"), ("Text 2 Image", "aspect_ratio")):
+            name = f"MiniMax H3 - {suffix}"
+            with self.subTest(guide=name):
+                self.assertIn(name, guides.get_guide_options())
+                plain = guides.combine_system_prompt("", name)
+                structured = guides.combine_system_prompt("", name, json_output=True)
+                self.assertIn("Plan the caption and canvas privately", plain)
+                self.assertIn("Return only the caption paragraph", plain)
+                self.assertNotIn("JSON", plain)
+                self.assertIn(f'"expanded_caption" and "{ratio_field}"', structured)
+
+    def test_minimax_image_edit_maps_batched_images_in_transport_order(self):
+        combined = guides.combine_system_prompt(
+            "", "MiniMax H3 - Image Edit", ("image10", "image2", "video1"),
+            image_shapes={"image10": (1, 1024, 768), "image2": (2, 720, 1280)},
+        )
+        self.assertIn("@image2 image 1/2 corresponds to <Picture 1>, aspect ratio 16:9.", combined)
+        self.assertIn("@image2 image 2/2 corresponds to <Picture 2>, aspect ratio 16:9.", combined)
+        self.assertIn("@image10 corresponds to <Picture 3>, aspect ratio 3:4.", combined)
+        self.assertNotIn("video1", combined)
+
+    def test_minimax_image_json_validates_each_guide_schema(self):
+        t2i = "MiniMax H3 - Text 2 Image"
+        edit = "MiniMax H3 - Image Edit"
+        guides.validate_guide_json(t2i, '{"expanded_caption":"A cabin.","aspect_ratio":"4:3"}')
+        guides.validate_guide_json(edit, '{"expanded_caption":"A cabin.","target_aspect_ratio":"7:5"}')
+        for name, result in (
+            (t2i, {"expanded_caption": "A cabin.", "aspect_ratio": "7:5"}),
+            (t2i, {"expanded_caption": "A cabin.", "aspect_ratio": "4:3", "extra": ""}),
+            (t2i, {"expanded_caption": 123, "aspect_ratio": "4:3"}),
+            (edit, {"expanded_caption": "A cabin.", "aspect_ratio": "4:3"}),
+            (edit, {"expanded_caption": "A cabin.", "target_aspect_ratio": "4:0"}),
+        ):
+            with self.subTest(guide=name, result=result), self.assertRaises(RuntimeError):
+                guides.validate_guide_json(name, json.dumps(result))
+
     def test_minimax_ref2v_selects_its_six_sections_over_shared_t2v_format(self):
         sections = ("subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music")
         for references in (("image1",), ("video1",), ("audio1",), ("image1", "video1", "audio1")):
@@ -49,10 +86,20 @@ class NewGuideTests(unittest.TestCase):
         combined = guides.combine_system_prompt("", "MOSS Image", ("image1",))
         self.assertIn('"bbox_coord_space": "abs_centralized"', combined)
         self.assertIn('"bbox_format": "yxyx"', combined)
-        self.assertIn("T2I.", combined)
-        self.assertIn("do not claim that MOSS Image consumes these attachments", combined)
+        self.assertIn("I2I / image editing with the MOSS edit LoRA", combined)
+        self.assertIn("begin the instruction with the exact words Change only", combined)
+        self.assertIn("then list what stays unchanged", combined)
+        self.assertIn("must receive the same images separately", combined)
+        self.assertNotIn("do not claim that MOSS Image consumes these attachments", combined)
         self.assertNotIn("## 1. Task Overview", combined)
         self.assertNotIn("integrated_multimodal_description:", combined)
+
+    def test_moss_without_images_keeps_generation_default_and_allows_explicit_edit_templates(self):
+        for references in ((), ("audio1",)):
+            combined = guides.combine_system_prompt("", "MOSS Image", references)
+            self.assertIn("Generation mode for this request: T2I.", combined)
+            self.assertIn("explicitly requests an edit instruction or hypothetical edit template", combined)
+            self.assertNotIn("Generation mode for this request: I2I", combined)
 
     def test_fibo_has_one_shared_guide_and_static_edit_schema(self):
         self.assertEqual(sum(name.startswith("Fibo") for name in guides.GUIDE_OPTIONS), 1)

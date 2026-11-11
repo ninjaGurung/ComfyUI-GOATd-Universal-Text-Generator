@@ -15,7 +15,7 @@ from comfy_api.latest import io, ui
 
 from .media import add_media
 from .local import generate_local
-from .prompt_guides import combine_system_prompt, get_guide_options
+from .prompt_guides import combine_system_prompt, get_guide_options, validate_guide_json
 from .stop_sequences import parse_stop_sequences
 from .security import is_loopback, session_keys
 
@@ -596,7 +596,12 @@ class GOATUniversalTextGenerator(io.ComfyNode):
                 valid = isinstance(value, str)
             if not valid:
                 raise ValueError(f"Settings value {field.id} has an invalid type. Reconnect Text Generator Settings.")
-        system = combine_system_prompt(system_prompt, prompt_guide, reference_names=tuple(name for group in (images, videos, audios) for name, value in (group or {}).items() if value is not None), json_output=settings.get("json_output", False))
+        reference_names = tuple(name for group in (images, videos, audios) for name, value in (group or {}).items() if value is not None)
+        guide_inputs = {}
+        if prompt_guide == "MiniMax H3 - Image Edit":
+            guide_inputs["image_shapes"] = {name: image.shape[:3] for name, image in (images or {}).items() if image is not None and image.ndim == 4}
+        json_output = settings.get("json_output", False)
+        system = combine_system_prompt(system_prompt, prompt_guide, reference_names=reference_names, json_output=json_output, **guide_inputs)
         limit = max(0, settings["context_window"])
         if not isinstance(context_session, str) or len(context_session) > 128:
             raise ValueError("Invalid conversation session. Reload the generator node.")
@@ -637,6 +642,8 @@ class GOATUniversalTextGenerator(io.ComfyNode):
             history=history,
             _metadata=metadata,
         )
+        if json_output:
+            validate_guide_json(prompt_guide, text)
         elapsed = monotonic() - started
         used = _context_tokens(system + prompt_idea + text)
         if limit and context_session:

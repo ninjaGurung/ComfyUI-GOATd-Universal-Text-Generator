@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import requests
 
 import test_context as context_contracts
+from test_new_guides import guides
 
 
 namespace = dict(context_contracts.namespace, json=json)
@@ -62,6 +63,22 @@ class GenerationInfoTests(unittest.TestCase):
         info = json.loads(self.execute().result[1])
         self.assertEqual(info["provider_usage"], {"input_tokens": 123, "output_tokens": 45, "total_tokens": 168, "cached_input_tokens": 10, "reasoning_tokens": 5})
         self.assertEqual(info["finish_reason"], "length")
+
+    def test_minimax_h3_image_edit_uses_settings_format_and_connected_image_ratio(self):
+        namespace["combine_system_prompt"] = guides.combine_system_prompt
+        namespace["validate_guide_json"] = guides.validate_guide_json
+        for enabled in (False, True):
+            with self.subTest(json_output=enabled):
+                self.settings["json_output"] = enabled
+                answer = '{"expanded_caption":"The target image shows a cabin.","target_aspect_ratio":"7:5"}' if enabled else "The target image shows a cabin."
+                self.response.json.return_value = {"choices": [{"message": {"content": answer}}]}
+                result = self.execute(prompt_guide="MiniMax H3 - Image Edit", images={"image2": SimpleNamespace(ndim=4, shape=(1, 5, 7, 3))})
+                body = self.post.call_args.kwargs["json"]
+                system = body["messages"][0]["content"]
+                self.assertEqual(result.result[0], answer)
+                self.assertIn("@image2 corresponds to <Picture 1>, aspect ratio 7:5.", system)
+                self.assertEqual('"target_aspect_ratio"' in system, enabled)
+                self.assertEqual("response_format" in body, enabled)
 
     def test_info_contains_no_credentials_session_or_prompt_contents(self):
         output = self.execute(images={"image1": object(), "image2": None}, videos={"video1": object()})

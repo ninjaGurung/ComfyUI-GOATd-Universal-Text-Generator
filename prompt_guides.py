@@ -1,6 +1,9 @@
 # Author: ninjaGurung
 # GitHub: https://github.com/ninjaGurung
+import json
+from math import gcd
 from pathlib import Path
+import re
 
 from .custom_guides import list_guides, load_guide
 
@@ -10,6 +13,8 @@ _GUIDE_FILES = {
     "MiniMax H3 - Ref2V": ("MinimaxH3_T2V_FL2V_PromptGuide.md", "MinimaxH3_Ref2V_PromptGuide.md"),
     "MiniMax H3 - Singularity": ("MinimaxH3_Singularity_PromptGuide.md",),
     "MiniMax H3 - Pika": ("MinimaxH3_Pika_PromptGuide.md",),
+    "MiniMax H3 - Image Edit": ("MinimaxH3Image_ImageEdit_PromptGuide.md",),
+    "MiniMax H3 - Text 2 Image": ("MinimaxH3Image_PromptGuide.md",),
     "Qwen Image 2.1": ("QwenImage2.1_PromptGuide.md",),
     "Wan 3.0": ("Wan3.0_PromptGuide.md",),
     "Seedance 2.0": ("Seedance2.0_PromptGuide.md",),
@@ -19,6 +24,12 @@ _GUIDE_FILES = {
     "MOSS Image": ("MossImage_PromptGuide.md",),
     "Fibo 2": ("Fibo2_PromptGuide.md",),
 }
+
+_MINIMAX_IMAGE_RATIO_FIELDS = {
+    "MiniMax H3 - Image Edit": "target_aspect_ratio",
+    "MiniMax H3 - Text 2 Image": "aspect_ratio",
+}
+_MINIMAX_H3_T2I_RATIOS = ("1:1", "5:4", "4:3", "3:2", "16:9", "21:9", "4:5", "3:4", "2:3", "9:16")
 
 # Primary sources checked 2026-10-10. These are paraphrased writing aids,
 # not generation settings or claims that connected LLMs implement image/video models.
@@ -44,7 +55,22 @@ def get_guide_options():
     return [*GUIDE_OPTIONS, *(guide["value"] for guide in list_guides()["guides"])]
 
 
-def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_output=False):
+def validate_guide_json(guide_name, text):
+    ratio_field = _MINIMAX_IMAGE_RATIO_FIELDS.get(guide_name)
+    if ratio_field is None:
+        return
+    answer = json.loads(text)
+    if answer.keys() != {"expanded_caption", ratio_field} or any(not isinstance(value, str) for value in answer.values()):
+        raise RuntimeError(f'{guide_name} JSON output requires exactly two string fields: "expanded_caption" and "{ratio_field}".')
+    ratio = answer[ratio_field]
+    if ratio_field == "aspect_ratio":
+        if ratio not in _MINIMAX_H3_T2I_RATIOS:
+            raise RuntimeError(f'{guide_name} returned an unsupported aspect_ratio. Choose one of {", ".join(_MINIMAX_H3_T2I_RATIOS)}.')
+    elif not re.fullmatch(r"0*[1-9][0-9]*:0*[1-9][0-9]*", ratio):
+        raise RuntimeError(f"{guide_name} target_aspect_ratio must be a positive-integer W:H ratio.")
+
+
+def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_output=False, *, image_shapes=None):
     if guide_name == "None":
         return system_prompt
     guide_label = guide_name
@@ -53,7 +79,9 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_ou
         guide = "\n\n".join((guide_dir / filename).read_text(encoding="utf-8-sig") for filename in _GUIDE_FILES[guide_name])
         if guide_name == "MiniMax H3 - Pika":
             guide = guide.split("\n## 6. Running the examples with the CLI\n", 1)[0]
-        if guide_name.startswith("MiniMax "):
+        if guide_name in _MINIMAX_IMAGE_RATIO_FIELDS:
+            guide += "\n\nUse the connected still images only in their stated roles. Sampled video frames do not count as source pictures."
+        elif guide_name.startswith("MiniMax "):
             guide += "\n\nReference tag mapping: @imageN corresponds to <Picture N>, @videoN to <Video N>, and @audioN to <Audio N>."
         elif guide_name == "Qwen Image 2.1":
             guide += "\n\nReference tag mapping: @imageN corresponds to <image_N>; for a single supplied image, use the input image as specified in the guide."
@@ -69,7 +97,7 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_ou
             if len(image_names) > 1:
                 guide += "Multi-reference tag mapping: " + ", ".join(f"@{name} corresponds to <image_{index}>" for index, name in enumerate(image_names, 1)) + ". Use these slot tokens in the edit instruction" + (" field edit_instruction." if json_output else ".")
         elif guide_name == "MOSS Image":
-            guide += "\n\nConnected images are visual evidence for the text-writing LLM. Describe requested observable details in words; do not claim that MOSS Image consumes these attachments or preserves their identity through native image editing."
+            guide += "\n\nConnected images are visual evidence for the text-writing LLM. For edits, @imageN corresponds to Picture N; preserve each supplied source/reference role. The downstream MOSS edit workflow must receive the same images separately and use the image edit LoRA."
         else:
             guide += "\n\nReference tag mapping: @imageN corresponds to @ImageN, @videoN to @VideoN, and @audioN to @AudioN."
         guide += " Preserve the numbered association and the user's stated reference purpose; do not infer first/last-frame roles from the number of images. Only use references supplied by the user; examples in this guide are examples, not attached assets."
@@ -89,7 +117,32 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_ou
     if not reference_names and guide_name in ("MiniMax H3 - T2V / FL2V", "MiniMax H3 - Ref2V"):
         references += " Use text-only T2VA: begin with integrated_multimodal_description, then overall_soundscape and non_diegetic_music. Omit the image-alignment instruction."
     mode = ""
-    if guide_name == "MiniMax H3 - Pika":
+    if guide_name in _MINIMAX_IMAGE_RATIO_FIELDS:
+        if guide_name == "MiniMax H3 - Image Edit":
+            image_names = sorted((name for name in reference_names if name.startswith("image")), key=lambda name: int(name[5:]))
+            pictures = []
+            for name in image_names:
+                count, height, width = (image_shapes or {}).get(name, (1, 0, 0))
+                divisor = gcd(width, height)
+                ratio = f"{width // divisor}:{height // divisor}" if width and height else "unavailable"
+                for index in range(count):
+                    label = f"@{name}" if count == 1 else f"@{name} image {index + 1}/{count}"
+                    pictures.append(f"{label} corresponds to <Picture {len(pictures) + 1}>, aspect ratio {ratio}.")
+            references = "\n".join(pictures) or "No source images are connected."
+            mode = "MiniMax H3 Image editing. "
+        else:
+            mode = "MiniMax H3 Image text-to-image. "
+        if json_output:
+            ratio_field = _MINIMAX_IMAGE_RATIO_FIELDS[guide_name]
+            mode += (
+                f'Return exactly one valid JSON object with two string keys, "expanded_caption" and "{ratio_field}". '
+                f'Put the complete caption in "expanded_caption" and the chosen W:H ratio in "{ratio_field}". '
+                'Escape double quotes and backslashes as required by JSON while preserving the decoded literal text. '
+                'Do not output Markdown fences, reasoning, extra keys, or text outside the object.'
+            )
+        else:
+            mode += "Return only the caption paragraph. Use the chosen aspect ratio to guide composition without a separate ratio line."
+    elif guide_name == "MiniMax H3 - Pika":
         if reference_names:
             mode = (
                 "Choose FL2VA only when the user explicitly assigns first-frame or last-frame roles; never infer those roles from attachment count. "
@@ -119,7 +172,11 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_ou
         )
         mode += "Use the same six top-level keys in the JSON object, without a wrapper." if json_output else "Begin with subject_definitions: and use the six section labels, without a preamble."
     elif guide_name == "MOSS Image":
-        mode = "T2I. Write a still-image caption or the requested MOSS layout JSON. Connected images may inform the caption; do not add video timelines, audio fields, or image-editing claims."
+        if any(name.startswith("image") for name in reference_names):
+            mode = "I2I / image editing with the MOSS edit LoRA. Unless the user explicitly requests a standalone caption or layout, begin the instruction with the exact words Change only, describe the requested change, then list what stays unchanged. Preserve only unrequested source details. Use Picture N for multiple supplied images and their stated roles."
+        else:
+            mode = "T2I. Write a still-image caption or the requested MOSS layout JSON. If the user explicitly requests an edit instruction or hypothetical edit template, begin it with Change only, describe the change, then state what stays unchanged; do not claim to have seen an unattached image."
+        mode += " Do not add video timelines or audio fields."
     elif guide_name == "Fibo 2":
         if any(name.startswith("image") for name in reference_names):
             mode = "I2I / Ref2I. " + ("Return one final-state VGL JSON object with edit_instruction. " if json_output else "Return only plain-language edit instructions, without JSON, field labels, or Markdown fences. Rewrite the rough Prompt Idea as a clear, actionable edit instruction. ")
