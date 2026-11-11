@@ -49,6 +49,8 @@ GUIDE_OPTIONS = sorted(
     ["None", *_GUIDE_FILES, *_GUIDES],
     key=lambda name: (0 if name.startswith("MiniMax ") else 1 if name.startswith("Seedance ") else 2, name.casefold()),
 )
+GUIDE_OPTIONS.remove("MiniMax H3 - Text 2 Image")
+GUIDE_OPTIONS.insert(GUIDE_OPTIONS.index("MiniMax H3 - Image Edit") + 1, "MiniMax H3 - Text 2 Image")
 
 
 def get_guide_options():

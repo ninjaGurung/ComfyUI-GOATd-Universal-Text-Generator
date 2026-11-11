@@ -18,10 +18,12 @@ spec.loader.exec_module(guides)
 
 class NewGuideTests(unittest.TestCase):
     def test_minimax_image_guides_gate_json_structure(self):
+        options = guides.get_guide_options()
+        edit_index = options.index("MiniMax H3 - Image Edit")
+        self.assertEqual(options[edit_index + 1], "MiniMax H3 - Text 2 Image")
         for suffix, ratio_field in (("Image Edit", "target_aspect_ratio"), ("Text 2 Image", "aspect_ratio")):
             name = f"MiniMax H3 - {suffix}"
             with self.subTest(guide=name):
-                self.assertIn(name, guides.get_guide_options())
                 plain = guides.combine_system_prompt("", name)
                 structured = guides.combine_system_prompt("", name, json_output=True)
                 self.assertIn("Plan the caption and canvas privately", plain)

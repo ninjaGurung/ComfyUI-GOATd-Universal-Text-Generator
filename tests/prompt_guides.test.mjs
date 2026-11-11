@@ -49,7 +49,7 @@ class Element {
     remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter((child) => child !== this); }
     focus() { this.focused = true; }
 }
-function setup({ roles = true } = {}) {
+function setup({ roles = true, builtins = ["None", "MiniMax H3 - Pika", "Seedance 2.5", "Fibo 2"] } = {}) {
     const document = { createElement: (tag) => new Element(tag), createElementNS: (ns, tag) => new Element(tag), head: new Element("head"), body: new Element("body"), documentElement: { clientWidth: 1200, clientHeight: 800 } };
     let latestMenu, latestInstance;
     const instances = [];
@@ -111,7 +111,7 @@ function setup({ roles = true } = {}) {
     context.goatFetch = (...args) => context.api.fetchApi(...args);
     vm.runInNewContext(source, context);
     const node = { pos: [0, 0], size: [560, 800], setDirtyCanvas() {} };
-    const makeWidget = () => ({ value: "None", options: { values: ["None", "MiniMax H3 - Pika", "Seedance 2.5", "Fibo 2"] }, setValue(value) { this.value = value; }, draw() { return this.value; } });
+    const makeWidget = () => ({ value: "None", options: { values: [...builtins] }, setValue(value) { this.value = value; }, draw() { return this.value; } });
     const widget = makeWidget();
     context.setupGuideMenu(widget, node);
     const open = async (which = widget, options = {}) => {
@@ -275,10 +275,10 @@ test("leaving an old folder cannot retract a newly opened folder and focused sub
 });
 
 test("menu preserves bundled groups and offers custom folder rename without serializing actions", async () => {
-    const s = setup();
+    const s = setup({ builtins: ["None", "MiniMax H3 - Image Edit", "MiniMax H3 - Text 2 Image", "MiniMax H3 - Pika", "Seedance 2.5"] });
     const menu = await s.open();
     assert.equal(menu[0].content, "📁 MiniMax H3");
-    assert.equal(menu[0].submenu.options[0].content, "Pika");
+    assert.deepEqual(Array.from(menu[0].submenu.options, (item) => item.content), ["Image Edit", "Text 2 Image", "Pika"]);
     assert.equal(menu[0].submenu.options.some((item) => item?.content === "Rename folder…"), false);
     assert.equal(menu[2].content, "📁 My guides");
     assert.equal(menu[2].submenu.options.some((item) => item?.content === "Rename folder…"), false);

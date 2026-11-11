@@ -477,7 +477,7 @@ export function setupGuideMenu(widget, node) {
             const sorted = [...state.builtins].sort(order);
             const folders = families.map((family) => ({
                 content: `📁 ${family}`, has_submenu: true,
-                submenu: { options: sorted.filter((value) => value.startsWith(`${family} `))
+                submenu: { options: state.builtins.filter((value) => value.startsWith(`${family} `))
                     .map((value) => leaf(value, value.slice(family.length).replace(/^ - /, "").trim())) },
             }));
             const customLeaf = (guide) => ({ ...leaf(guide.value, guide.name), label: guide.name,
