@@ -21,7 +21,8 @@ function setup() {
     let extension;
     const synced = [];
     const source = readFileSync(new URL("../web/goat_text_generator.js", import.meta.url), "utf8").replace(/^import .*;\r?\n/gm, "");
-    const context = { document, Event, setTimeout, clearTimeout,
+    const LiteGraph = { vueNodesMode: false };
+    const context = { document, Event, setTimeout, clearTimeout, LiteGraph,
         app: { registerExtension(value) { extension = value; } },
         ComfyWidgets: { STRING(node, name) { const widget = node.textWidget(name); node.widgets.push(widget); return { widget }; } },
         setupGuideMenu() {}, removeGuideMenu() {}, mountTagSuggestions(node, widget) { synced.push(widget.name); }, removeTagSuggestions() {},
@@ -44,7 +45,7 @@ function setup() {
     }
     extension.beforeRegisterNodeDef(Node, { name: "GOATUniversalTextGenerator" });
     const node = new Node(); node.onNodeCreated();
-    return { node, synced, widget: (name) => node.widgets.find((widget) => widget.name === name) };
+    return { node, synced, LiteGraph, widget: (name) => node.widgets.find((widget) => widget.name === name) };
 }
 
 const pointer = (clientY, extra = {}) => ({ clientY, pointerId: 1, button: 0, preventDefault() {}, stopPropagation() {}, ...extra });
@@ -114,5 +115,19 @@ test("connections, configure and re-add refresh reference tags without canvas dr
         synced.length = 0;
         refresh();
         assert.deepEqual(synced, ["prompt_idea", "system_prompt"]);
+    }
+});
+
+test("classic DOM panels use the node width after switching renderers", () => {
+    const { widget, LiteGraph } = setup();
+    for (const name of ["prompt_idea", "system_prompt", "generated_text"]) {
+        const area = widget(name);
+        area.width = 300;
+        LiteGraph.vueNodesMode = true;
+        area.options.onDraw?.(area);
+        assert.equal(area.width, 300);
+        LiteGraph.vueNodesMode = false;
+        area.options.onDraw?.(area);
+        assert.equal(area.width, undefined);
     }
 });

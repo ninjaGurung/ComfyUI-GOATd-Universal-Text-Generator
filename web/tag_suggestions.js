@@ -153,8 +153,14 @@ export function mountTagSuggestions(node, widget) {
         if (!(Number.parseFloat(style.lineHeight) >= Number.parseFloat(style.fontSize) * 1.8)) textarea.style.lineHeight = "1.8";
         if (Number.parseFloat(style.paddingTop) < 7) textarea.style.paddingTop = "7px";
         if (Number.parseFloat(style.paddingRight) < 5) textarea.style.paddingRight = "5px";
+        const cssWidth = Number.parseFloat(style.width);
+        const paddingBox = style.boxSizing === "border-box"
+            ? cssWidth - Number.parseFloat(style.borderLeftWidth) - Number.parseFloat(style.borderRightWidth)
+            : cssWidth + Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+        // clientWidth excludes the scrollbar but rounds away the fraction used for wrapping.
+        const width = textarea.clientWidth + (Number.isFinite(paddingBox) ? paddingBox - Math.round(paddingBox) : 0);
         const names = ["fontFamily", "fontSize", "fontWeight", "fontStyle", "fontVariant", "fontStretch", "fontKerning", "fontFeatureSettings", "lineHeight", "letterSpacing", "wordSpacing", "textAlign", "textIndent", "textTransform", "direction", "whiteSpace", "overflowWrap", "wordBreak", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "tabSize"];
-        const key = [textarea.offsetLeft, textarea.offsetTop, textarea.clientLeft, textarea.clientTop, textarea.clientWidth, textarea.clientHeight, ...names.map((name) => style[name])].join(";");
+        const key = [textarea.offsetLeft, textarea.offsetTop, textarea.clientLeft, textarea.clientTop, width, textarea.clientHeight, ...names.map((name) => style[name])].join(";");
         if (parent === state.parent && key === state.layoutKey) return;
         state.parent = parent;
         state.layoutKey = key;
@@ -164,10 +170,10 @@ export function mountTagSuggestions(node, widget) {
         for (const name of names) {
             mirror.style[name] = text.style[name] = style[name];
         }
-        mirror.style.width = text.style.width = `${textarea.clientWidth}px`;
+        mirror.style.width = text.style.width = `${width}px`;
         Object.assign(decorations.style, {
             left: `${textarea.offsetLeft + textarea.clientLeft}px`, top: `${textarea.offsetTop + textarea.clientTop}px`,
-            width: `${textarea.clientWidth}px`, height: `${textarea.clientHeight}px`, borderRadius: style.borderRadius,
+            width: `${width}px`, height: `${textarea.clientHeight}px`, borderRadius: style.borderRadius,
         });
     }
 

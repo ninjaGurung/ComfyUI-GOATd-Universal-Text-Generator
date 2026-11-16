@@ -52,9 +52,10 @@ function setup(value = "", active = true) {
     };
     const descriptors = new Map();
     let disconnected = false;
+    const style = { fontSize: "14px", lineHeight: "26px", paddingTop: "8px", paddingRight: "8px" };
     const context = {
         Event, window: document.defaultView, document,
-        getComputedStyle: () => ({ fontSize: "14px", lineHeight: "26px", paddingTop: "8px", paddingRight: "8px" }),
+        getComputedStyle: () => style,
         ResizeObserver: class { observe() {} disconnect() { disconnected = true; } },
         resolveMediaPreview: (_node, tag) => descriptors.get(tag) ?? { kind: tag.match(/^@(image|video|audio)/)[1], title: tag, url: `/view?filename=${tag.slice(1)}` },
         createMediaPreview: (_doc, descriptor, size) => {
@@ -75,9 +76,23 @@ function setup(value = "", active = true) {
     const role = (name) => all().filter((element) => element.getAttribute("role") === name);
     const fire = (element, type, options = {}) => element.dispatchEvent({ type, button: 0, preventDefault() {}, stopPropagation() {}, ...options });
     const type = (text) => { textarea.value = text; textarea.setSelectionRange(text.length, text.length); textarea.focus(); fire(textarea, "input"); };
-    return { document, textarea, widget, node, connected, descriptors, previews, sync, role, fire, type,
+    return { document, textarea, widget, node, connected, descriptors, previews, sync, role, fire, type, style,
         remove: () => context.removeTagSuggestions(widget), observerDisconnected: () => disconnected };
 }
+
+test("tag and caret mirrors keep fractional widths when a scrollbar takes space", () => {
+    const ui = setup("Matching (@image3), including letters.");
+    Object.assign(ui.style, { width: "219.625px", boxSizing: "border-box", borderLeftWidth: "2px", borderRightWidth: "2px" });
+    ui.textarea.clientWidth = 201;
+    ui.sync();
+    const { children } = ui.textarea.parentElement;
+    assert.equal(children[2].style.width, "200.625px");
+    assert.equal(children[3].children[0].style.width, "200.625px");
+    ui.style.width = "219.875px";
+    ui.sync();
+    assert.equal(children[3].children[0].style.width, "200.875px");
+    ui.remove();
+});
 
 test("autocomplete filters image, video and audio prefixes and renders matching thumbnails", () => {
     const ui = setup();

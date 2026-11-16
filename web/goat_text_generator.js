@@ -188,6 +188,11 @@ function setupTextArea(node, widget, defaultHeight) {
     widget.options.setValue = (value) => { textarea.value = value; };
     widget.options.margin = 0;
     widget.options.selectOn = ["focusin", "click"];
+    const onDraw = widget.options.onDraw;
+    widget.options.onDraw = function (area) {
+        onDraw?.call(this, area);
+        if (!LiteGraph.vueNodesMode) area.width = undefined;
+    };
     let height = defaultHeight;
     widget.options.getMinHeight = widget.options.getMaxHeight = () => height;
     widget.computeSize = (width) => [width, height];

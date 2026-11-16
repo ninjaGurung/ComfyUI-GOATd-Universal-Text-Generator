@@ -32,7 +32,7 @@ function setup(crypto = webcrypto) {
     const node = new Node();
     node.onNodeCreated();
     node.widgets.push({ name: "generated_text", value: "Output", serialize: false });
-    return { node, Node, settings, refresh: () => context.refreshContextControls(node), widget: (name) => node.widgets.find((widget) => widget.name === name) };
+    return { node, Node, settings, app: context.app, refresh: () => context.refreshContextControls(node), widget: (name) => node.widgets.find((widget) => widget.name === name) };
 }
 
 test("context controls only show with a positive limit and reserve footer after output", () => {
@@ -130,10 +130,18 @@ test("Nodes 2.0 context settings and connections update without foreground drawi
 });
 
 test("restoring enabled memory preserves the saved node height", () => {
-    const { node, settings } = setup();
+    const { node, settings, app, widget } = setup();
     settings.widgets[0].value = 8192;
     const savedHeight = node.size[1];
+    app.configuringGraph = true;
+    node.onConnectionsChange();
     node.onConfigure();
     node.onAdded();
+    app.configuringGraph = false;
+    node.onExecuted({ context_usage: [{ used: 320, limit: 8192 }] });
     assert.equal(node.size[1], savedHeight);
+    assert.equal(widget("context_usage").hidden, false);
+    settings.widgets[0].value = 0;
+    node.onConnectionsChange();
+    assert.equal(node.size[1], savedHeight - 60);
 });

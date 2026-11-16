@@ -41,9 +41,9 @@ function updateLayout(node, resize = true) {
     state.limit = limit;
     if (!(limit > 0)) state.used = 0;
     for (const widget of [state.resetSpacing, state.resetButton, state.footer]) widget.hidden = !(limit > 0);
-    if (wasEnabled !== (limit > 0)) {
+    if (wasEnabled !== (limit > 0) && resize && !app.configuringGraph) {
         const minimum = node.computeSize();
-        const height = resize ? node.size[1] + (limit > 0 ? 60 : -60) : node.size[1];
+        const height = node.size[1] + (limit > 0 ? 60 : -60);
         node.setSize([Math.max(node.size[0], minimum[0]), Math.max(minimum[1], height)]);
     }
     state.footer.callback?.();
