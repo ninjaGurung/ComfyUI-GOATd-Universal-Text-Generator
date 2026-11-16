@@ -30,6 +30,18 @@ PROVIDERS = {
     "OpenCode": ("https://opencode.ai/inference/openai/v1", "OPENCODE_API_KEY"),
 }
 
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a prompt enhancement assistant. Write one detailed, ready-to-use generation prompt from the user's idea. "
+    "Start the answer directly in the required format. Make each necessary choice once and move on. "
+    "If you start repeating a check or reconsidering a settled choice, stop planning and finish the prompt. "
+    "Omit drafts, alternatives, your reasoning, commentary, and guide headings.\n\n"
+    "When a prompt guide is selected, use its relevant rules, reference syntax, and output format. "
+    "Develop the idea with concrete, generation-ready details appropriate to the guide, such as subject, action, setting, composition, lighting, motion, or sound. "
+    "Choose details the guide calls for when the user leaves them open. Preserve explicit facts, constraints, exact quoted text, and reference roles. "
+    "Use only supplied references and treat guide examples as examples. "
+    "Without a guide, enhance the idea as a cohesive prompt in the user's requested format."
+)
+
 
 def _context_tokens(text):
     return (len(text.encode("utf-8")) + 3) // 4
@@ -348,7 +360,7 @@ class UniversalLLM(io.ComfyNode):
                 io.Combo.Input("provider", options=[*PROVIDERS, "ComfyUI Local"], default="OpenRouter"),
                 io.String.Input("model", default="", tooltip="Model ID from your provider or local server. ComfyUI Local uses the connected CLIP model instead. Media inputs require a compatible multimodal model."),
                 io.String.Input("prompt_idea", multiline=True, default="", dynamic_prompts=False, tooltip="Reference attachments by socket name: @image1, @video1, @audio1. All connected media are sent."),
-                io.String.Input("system_prompt", multiline=True, default="You are a prompt enhancement assistant. Follow the prompt guide for the selected model and the user's explicit instructions. Return only the final enhanced prompt in the guide's required format. Strictly no commentary, preambles, explanations, analysis, suggestions, mode labels, or copied guide headings. Preserve the user's intent, details, exact quoted text, and reference associations. Use only information explicitly supplied by the user or directly observable in the supplied references. Do not invent details, make assumptions, infer unstated intentions, or fill gaps. Leave unspecified details unspecified. Improve clarity, wording, and structure without adding content. Treat guide examples as examples, never as supplied assets or requested details. When references are connected, explicitly identify their roles using the selected guide's reference syntax. These constraints take precedence over any creative embellishment suggested by the guide. If no guide is selected, enhance the prompt using these same constraints.", dynamic_prompts=False, tooltip="System instructions. Attachment tags can also be used here."),
+                io.String.Input("system_prompt", multiline=True, default=DEFAULT_SYSTEM_PROMPT, dynamic_prompts=False, tooltip="System instructions. Attachment tags can also be used here."),
                 io.String.Input("api_key", optional=True, default="", socketless=True, tooltip="Session-only bearer key; omitted from saved workflows. Re-enter after reloading. Blank uses the provider's default environment key at its default endpoint."),
                 io.String.Input("api_key_env", optional=True, default="", tooltip="Provider's default key variable, or a name bound to this endpoint through server-side GOAT_API_KEY_BINDINGS. Arbitrary environment lookup is blocked."),
                 io.String.Input("base_url", optional=True, default="", tooltip="Blank uses the provider default. Remote endpoints require HTTPS. Local LM Studio, Ollama, and compatible servers may use loopback HTTP. Include the API prefix for custom compatible endpoints."),
@@ -491,7 +503,10 @@ class GOATTextGeneratorSettings(io.ComfyNode):
     @classmethod
     def define_schema(cls):
         fields = [field for field in UniversalLLM.define_schema().inputs if field.id not in PROMPT_INPUTS]
-        defaults = {"provider": "ComfyUI Local", "thinking": "disabled", "top_p": 0.95, "top_k": 40, "min_p": 0.05, "repetition_penalty": 1.1}
+        defaults = {
+            "provider": "ComfyUI Local", "thinking": "disabled", "temperature": 0.7,
+            "top_p": 0.8, "top_k": 20, "min_p": 0.0, "repetition_penalty": 1.0, "presence_penalty": 1.5,
+        }
         for field in fields:
             if field.id in defaults:
                 field.default = defaults[field.id]
@@ -513,7 +528,10 @@ class GOATTextGeneratorSettings(io.ComfyNode):
     def execute(cls, **kwargs):
         fields = cls.define_schema().inputs
         provider = kwargs.get("provider", "ComfyUI Local")
-        defaults = {} if provider == "ComfyUI Local" else {"thinking": "auto", "temperature": -1.0, "top_p": -1.0, "top_k": -1, "min_p": -1.0, "repetition_penalty": -1.0}
+        defaults = {} if provider == "ComfyUI Local" else {
+            "thinking": "auto", "temperature": -1.0, "top_p": -1.0, "top_k": -1,
+            "min_p": -1.0, "repetition_penalty": -1.0, "presence_penalty": 0.0,
+        }
         settings = {field.id: kwargs.get(field.id, defaults.get(field.id, field.default)) for field in fields if field.id != "remember_context"}
         remember_context = kwargs.get("remember_context", settings["context_window"] > 0)
         if not isinstance(remember_context, bool):

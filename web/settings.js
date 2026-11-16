@@ -21,7 +21,10 @@ const generationDefaults = {
     force_regenerate: false, video_mode: "auto", video_frame_count: 0,
     thinking: "auto", reasoning_effort: "auto",
 };
-const localDefaults = { temperature: 0.7, top_p: 0.95, top_k: 40, min_p: 0.05, repetition_penalty: 1.1, thinking: "disabled" };
+const localDefaults = {
+    temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, repetition_penalty: 1, presence_penalty: 1.5,
+    thinking: "disabled",
+};
 const stateKey = Symbol("goatSettings");
 let nextModelListId = 0;
 

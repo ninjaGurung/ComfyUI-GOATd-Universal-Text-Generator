@@ -129,7 +129,9 @@ Media support depends on both provider and model. Video frame mode sends visuals
 
 Auto sampling works across models. It targets about **2 frames/second**, sharing soft budgets of **12 visual references** and roughly **6 megapixels** across images and videos. It keeps at least two frames per video when available; existing image batches reduce the remaining budget. Cerebras/Groq Auto uses at most two frames per video. Positive counts override these sampling budgets. Source resolution is preserved.
 
-Unsupported controls are omitted. Server providers start with sampling defaults (`-1`; frequency/presence penalties `0`). ComfyUI Local starts at temperature **0.7**, top_p **0.95**, top_k **40**, min_p **0.05**, and repetition_penalty **1.1**.
+Unsupported controls are omitted. Server providers use their own sampling defaults when the widgets show `-1`. Frequency and presence penalties start at `0` for server providers.
+
+For Qwen3.5-9B Abliterated prompt enhancement, start with **Thinking Disabled**, temperature **0.7**, top_p **0.8**, top_k **20**, min_p **0**, repetition_penalty **1.0**, and presence_penalty **1.5**. These are the ComfyUI Local defaults, based on the upstream model's non-thinking profile for general tasks. GOAT'd starts with **1024** output tokens and **Remember context** off. The bundled local video example uses **2048** output tokens for longer guided prompts. [Qwen3.5-9B model card](https://huggingface.co/Qwen/Qwen3.5-9B#best-practices)
 
 Model, reasoning, credentials, endpoint, and advanced settings are remembered separately per provider while the node is open. The current provider's settings are saved in the workflow; entered API keys stay in memory.
 

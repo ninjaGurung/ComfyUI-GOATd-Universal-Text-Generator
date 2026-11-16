@@ -50,10 +50,11 @@ class SettingsContextTests(unittest.TestCase):
     def test_legacy_positive_window_without_toggle_remains_enabled(self):
         self.assertEqual(self.settings(context_window=1024)["context_window"], 1024)
 
-    def test_local_defaults_are_preserved(self):
+    def test_local_defaults_use_qwen_non_thinking_sampling(self):
         settings = self.settings()
         self.assertEqual(settings["provider"], "ComfyUI Local")
-        self.assertEqual({name: settings[name] for name in ("thinking", "temperature", "top_p", "top_k", "min_p", "repetition_penalty")}, dict(thinking="disabled", temperature=0.7, top_p=0.95, top_k=40, min_p=0.05, repetition_penalty=1.1))
+        expected = dict(thinking="disabled", temperature=0.7, top_p=0.8, top_k=20, min_p=0.0, repetition_penalty=1.0, presence_penalty=1.5)
+        self.assertEqual({name: settings[name] for name in expected}, expected)
 
     def test_remote_missing_inputs_use_provider_defaults(self):
         for provider in ("OpenRouter", "Cerebras", "LM Studio", "Ollama", "OpenAI-compatible", "Groq", "OpenCode"):

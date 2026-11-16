@@ -329,10 +329,11 @@ test("provider generation controls are independent and first hosted use keeps sa
     widget("provider").value = "ComfyUI Local";
     widget("provider").callback("ComfyUI Local");
     assert.equal(widget("temperature").value, 0.7);
-    assert.equal(widget("top_p").value, 0.95);
-    assert.equal(widget("top_k").value, 40);
-    assert.equal(widget("min_p").value, 0.05);
-    assert.equal(widget("repetition_penalty").value, 1.1);
+    assert.equal(widget("top_p").value, 0.8);
+    assert.equal(widget("top_k").value, 20);
+    assert.equal(widget("min_p").value, 0);
+    assert.equal(widget("repetition_penalty").value, 1);
+    assert.equal(widget("presence_penalty").value, 1.5);
     assert.equal(widget("thinking").value, "disabled");
     assert.equal(widget("reasoning_effort").value, "auto");
     assert.equal(widget("remember_context").value, false);
@@ -344,6 +345,7 @@ test("provider generation controls are independent and first hosted use keeps sa
     widget("provider").value = "Groq";
     widget("provider").callback("Groq");
     for (const name of ["temperature", "top_p", "top_k", "min_p", "repetition_penalty"]) assert.equal(widget(name).value, -1);
+    assert.equal(widget("presence_penalty").value, 0);
     assert.equal(widget("max_output_tokens").value, 1024);
     assert.equal(widget("context_window").value, 0);
     assert.equal(widget("thinking").value, "auto");

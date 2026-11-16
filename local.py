@@ -12,6 +12,9 @@ from .media import _connected, _TAG, _video_frame_counts, _video_frames
 from .stop_sequences import parse_stop_sequences
 
 
+_REASONING_HEADING = re.compile(r"\s*(?:#{1,6}[ \t]+)?(?:\*\*|__)?(?:thinking|reasoning) process(?:\*\*|__)?[ \t]*:", re.IGNORECASE)
+
+
 def _media(prompt, system_prompt, images, videos, audios, video_mode, video_frame_count):
     images = _connected(images, "image", 10)
     videos = _connected(videos, "video", 4)
@@ -77,11 +80,7 @@ def _embedding_count(tokens, kind):
     return max((sum(isinstance(token[0], dict) and token[0].get("type") == kind for batch in batches for token in batch) for batches in tokens.values()), default=0)
 
 
-def generate_local(clip, prompt_idea, system_prompt, thinking, max_output_tokens, temperature, top_p, top_k, min_p, repetition_penalty, presence_penalty, seed, stop_sequences, images=None, videos=None, audios=None, video_mode="auto", video_frame_count=0):
-    if clip is None:
-        raise ValueError("Connect a generation-capable model from Load CLIP to the clip input for ComfyUI Local.")
-    stops = parse_stop_sequences(stop_sequences)
-    prompt, image, audio, source_images = _media(prompt_idea, system_prompt, images, videos, audios, video_mode, video_frame_count)
+def _tokenize_local(clip, prompt, system_prompt, thinking, image, audio, source_images):
     # Qwen accepts original image sizes; Gemma uses the padded batch.
     tokenizer_options = {} if thinking == "auto" else {"thinking": thinking == "enabled"}
     tokens = clip.tokenize(prompt, image=image, images=source_images, audio=audio, video=None, skip_template=False, min_length=1, system_prompt=system_prompt, **tokenizer_options)
@@ -107,37 +106,60 @@ def generate_local(clip, prompt_idea, system_prompt, thinking, max_output_tokens
                         data = embed["data"]
                         if data.shape[-1] == 640 and data.shape[-2] * 640 < audio["waveform"].shape[-1]:
                             raise ValueError("This model accepts up to 30 seconds of combined audio. Use shorter clips or an audio-capable provider with a higher limit.")
-    if {"qwen3_4b", "qwen3_8b"}.intersection(tokens) and clip.is_dynamic():
-        # Native legacy casting avoids the FP8 activation scales used by dynamic generation.
-        clip = clip.clone(disable_dynamic=True)
-        clip.cond_stage_model = clip.patcher.model
-    try:
-        generated_ids = clip.generate(
-            tokens,
-            do_sample=temperature != 0,
-            max_length=max_output_tokens,
-            temperature=temperature if temperature > 0 else 1.0,
-            top_k=top_k if top_k >= 0 else 50,
-            top_p=top_p if top_p >= 0 else 1.0,
-            min_p=min_p if min_p >= 0 else 0.0,
-            repetition_penalty=repetition_penalty if repetition_penalty >= 0 else 1.0,
-            presence_penalty=presence_penalty,
-            seed=seed if seed >= 0 else random.getrandbits(63),
-            mtp=True,
-        )
-    except AttributeError as error:
-        if error.name != "generate":
-            raise
-        raise ValueError("This CLIP model cannot generate text. Load a supported Gemma/Qwen language model; ordinary CLIP and T5 encoders only produce embeddings.") from error
+    return tokens
+
+
+def _decode_local_answer(clip, tokens, generated_ids):
+    # An assistant prefix from the chat template is absent from the generated IDs.
+    batch = next(iter(tokens.values()))[-1]
+    prefix_ids = [token for token, _ in batch[-16:] if isinstance(token, int)]
+    reasoning_primed = bool(prefix_ids) and clip.decode(prefix_ids).rstrip().endswith("<think>")
     text = clip.decode(generated_ids)
     before, closed, after = text.partition("</think>")
-    # A chat template can supply the opening tag outside the decoded completion.
-    reasoning_primed = prompt.rstrip().endswith("<think>")
-    if closed and (reasoning_primed or "<think>" not in before):
+    if closed and (reasoning_primed or "<think>" not in before or _REASONING_HEADING.match(before)):
         text = after
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    if (reasoning_primed and not closed) or text.lstrip().startswith("<think>"):
-        raise RuntimeError("The local model stopped during reasoning without an answer. Increase max_output_tokens or set thinking to disabled.")
+    if (reasoning_primed and not closed) or text.lstrip().startswith("<think>") or _REASONING_HEADING.match(text) or (closed and not text.strip()):
+        return None
+    return text
+
+
+def generate_local(clip, prompt_idea, system_prompt, thinking, max_output_tokens, temperature, top_p, top_k, min_p, repetition_penalty, presence_penalty, seed, stop_sequences, images=None, videos=None, audios=None, video_mode="auto", video_frame_count=0):
+    if clip is None:
+        raise ValueError("Connect a generation-capable model from Load CLIP to the clip input for ComfyUI Local.")
+    stops = parse_stop_sequences(stop_sequences)
+    prompt, image, audio, source_images = _media(prompt_idea, system_prompt, images, videos, audios, video_mode, video_frame_count)
+    seed = seed if seed >= 0 else random.getrandbits(63)
+    modes = (thinking,) if thinking == "disabled" else (thinking, "disabled")
+    for mode in modes:
+        tokens = _tokenize_local(clip, prompt, system_prompt, mode, image, audio, source_images)
+        if {"qwen3_4b", "qwen3_8b"}.intersection(tokens) and clip.is_dynamic():
+            # Native legacy casting avoids the FP8 activation scales used by dynamic generation.
+            clip = clip.clone(disable_dynamic=True)
+            clip.cond_stage_model = clip.patcher.model
+        try:
+            generated_ids = clip.generate(
+                tokens,
+                do_sample=temperature != 0,
+                max_length=max_output_tokens,
+                temperature=temperature if temperature > 0 else 1.0,
+                top_k=top_k if top_k >= 0 else 50,
+                top_p=top_p if top_p >= 0 else 1.0,
+                min_p=min_p if min_p >= 0 else 0.0,
+                repetition_penalty=repetition_penalty if repetition_penalty >= 0 else 1.0,
+                presence_penalty=presence_penalty,
+                seed=seed,
+                mtp=True,
+            )
+        except AttributeError as error:
+            if error.name != "generate":
+                raise
+            raise ValueError("This CLIP model cannot generate text. Load a supported Gemma/Qwen language model; ordinary CLIP and T5 encoders only produce embeddings.") from error
+        text = _decode_local_answer(clip, tokens, generated_ids)
+        if text is not None:
+            break
+    else:
+        raise RuntimeError("The local model stopped during reasoning and produced no answer text. Increase max_output_tokens or shorten the prompt.")
     endings = [text.find(stop) for stop in stops if stop in text]
     if endings:
         text = text[:min(endings)]

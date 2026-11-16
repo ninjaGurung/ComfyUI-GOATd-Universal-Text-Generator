@@ -221,5 +221,7 @@ def combine_system_prompt(system_prompt, guide_name, reference_names=(), json_ou
         "Apply this guide together with the user's system instructions and prompt idea. "
         f"{preservation}"
         "When guide examples or defaults conflict with explicit user instructions, follow the user instructions. "
-        "Return the requested prompt output, without guide explanations or source citations unless requested."
+        "Use the applicable guide sections to develop specific, generation-ready details within those constraints. "
+        "Make each required choice once, then write the finished prompt directly in the requested format. "
+        "Omit planning, repeated checks, guide explanations, and source citations unless requested."
     )

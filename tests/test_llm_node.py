@@ -527,9 +527,9 @@ class UniversalLLMTests(unittest.TestCase):
 
     def test_settings_creation_defaults_and_manual_values(self):
         defaults = {field.id: field.default for field in Settings.define_schema().inputs}
-        preset = {"provider": "ComfyUI Local", "thinking": "disabled", "temperature": 0.7, "top_p": 0.95, "top_k": 40, "min_p": 0.05, "repetition_penalty": 1.1}
+        preset = {"provider": "ComfyUI Local", "thinking": "disabled", "temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0.0, "repetition_penalty": 1.0, "presence_penalty": 1.5}
         self.assertEqual({name: defaults[name] for name in preset}, preset)
-        values = {**defaults, "thinking": "enabled", "temperature": 0.4, "top_p": 0.8, "top_k": 12, "min_p": 0.02, "repetition_penalty": 1.0}
+        values = {**defaults, "thinking": "enabled", "temperature": 0.4, "top_p": 0.8, "top_k": 12, "min_p": 0.02, "repetition_penalty": 1.0, "presence_penalty": 0.0}
         for provider in ("ComfyUI Local", "OpenRouter", "Ollama", "ComfyUI Local"):
             values["provider"] = provider
             self.assertEqual(Settings.execute(**values)[0], {name: value for name, value in values.items() if name != "remember_context"})
@@ -1034,6 +1034,29 @@ class UniversalLLMTests(unittest.TestCase):
             with self.subTest(answer=answer):
                 clip = self.local_clip(answer=answer)
                 self.assertEqual(self.generate("ComfyUI Local", clip=clip, thinking="enabled", stop_sequences="END\nSTOP"), (expected,))
+
+    def test_local_qwen35_retries_when_its_prefilled_reasoning_does_not_close(self):
+        clip = self.local_clip("qwen35_9b")
+        clip.tokenize.side_effect = lambda prompt, **kwargs: {"qwen35_9b": [[(5 if kwargs["thinking"] else 6, 1.0)]]}
+        clip.generate.side_effect = [[2, 3], [4]]
+        clip.decode.side_effect = lambda ids: {
+            (5,): "assistant\n<think>\n",
+            (6,): "assistant\n<think>\n\n</think>\n\n",
+            (2, 3): "Unmarked reasoning that used the full budget",
+            (4,): "A man drives his Mercedes along a highway.",
+        }[tuple(ids)]
+        answer = self.generate("ComfyUI Local", clip=clip, thinking="enabled", max_output_tokens=2, seed=42)
+        self.assertEqual(answer, ("A man drives his Mercedes along a highway.",))
+        self.assertEqual([call.kwargs["thinking"] for call in clip.tokenize.call_args_list], [True, False])
+        self.assertEqual(clip.generate.call_count, 2)
+        self.assertEqual(clip.generate.call_args_list[0].kwargs, clip.generate.call_args_list[1].kwargs)
+
+    def test_local_reasoning_heading_cannot_leak_when_retry_also_loops(self):
+        clip = self.local_clip("qwen35_9b", answer="Thinking Process:\nCheck the request. Check the request.")
+        with self.assertRaisesRegex(RuntimeError, "stopped during reasoning"):
+            self.generate("ComfyUI Local", clip=clip, thinking="enabled", max_output_tokens=2)
+        self.assertEqual(clip.generate.call_count, 2)
+        self.assertFalse(clip.tokenize.call_args.kwargs["thinking"])
 
     def test_compact_stop_field_and_json_literal_sequences(self):
         field = next(field for field in node_module.GOATTextGeneratorSettings.define_schema().inputs if field.id == "stop_sequences")

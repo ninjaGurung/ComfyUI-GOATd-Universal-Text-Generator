@@ -26,7 +26,8 @@ class NewGuideTests(unittest.TestCase):
             with self.subTest(guide=name):
                 plain = guides.combine_system_prompt("", name)
                 structured = guides.combine_system_prompt("", name, json_output=True)
-                self.assertIn("Plan the caption and canvas privately", plain)
+                self.assertIn("Choose the canvas once, then write the final caption directly", plain)
+                self.assertIn("develop specific, generation-ready details within those constraints", plain)
                 self.assertIn("Return only the caption paragraph", plain)
                 self.assertNotIn("JSON", plain)
                 self.assertIn(f'"expanded_caption" and "{ratio_field}"', structured)
