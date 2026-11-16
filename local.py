@@ -1,6 +1,7 @@
 # Author: ninjaGurung
 # GitHub: https://github.com/ninjaGurung
 import random
+import re
 
 import torch
 import torch.nn.functional as F
@@ -128,12 +129,15 @@ def generate_local(clip, prompt_idea, system_prompt, thinking, max_output_tokens
         if error.name != "generate":
             raise
         raise ValueError("This CLIP model cannot generate text. Load a supported Gemma/Qwen language model; ordinary CLIP and T5 encoders only produce embeddings.") from error
-    generated_text = clip.decode(generated_ids)
-    text = generated_text
-    if generated_text.lstrip().startswith("<think>") or prompt.rstrip().endswith("<think>"):
-        _, closed, text = generated_text.partition("</think>")
-        if not closed:
-            raise RuntimeError("The local model stopped during reasoning without an answer. Increase max_output_tokens or set thinking to disabled.")
+    text = clip.decode(generated_ids)
+    before, closed, after = text.partition("</think>")
+    # A chat template can supply the opening tag outside the decoded completion.
+    reasoning_primed = prompt.rstrip().endswith("<think>")
+    if closed and (reasoning_primed or "<think>" not in before):
+        text = after
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    if (reasoning_primed and not closed) or text.lstrip().startswith("<think>"):
+        raise RuntimeError("The local model stopped during reasoning without an answer. Increase max_output_tokens or set thinking to disabled.")
     endings = [text.find(stop) for stop in stops if stop in text]
     if endings:
         text = text[:min(endings)]

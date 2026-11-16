@@ -1023,10 +1023,17 @@ class UniversalLLMTests(unittest.TestCase):
             self.generate("ComfyUI Local", clip=clip)
 
     def test_local_reasoning_and_literal_stop_sequences(self):
-        for answer, expected in (("<think>private</think> A cabin END extra", "A cabin"), ("A cabin STOP other END", "A cabin"), ("A <think>literal tag", "A <think>literal tag")):
+        for answer, expected in (
+            ("<think>private</think> A cabin END extra", "A cabin"),
+            ("Thinking Process:\nSTOP in reasoning</think>\n\nA cabin END extra", "A cabin"),
+            ("Draft STOP</think><think>More STOP reasoning</think>A cabin END extra", "A cabin"),
+            ("A cabin.<think>Hidden STOP notes</think> Snow falls.<think>More reasoning</think>", "A cabin. Snow falls."),
+            ("A cabin STOP other END", "A cabin"),
+            ("A <think>literal tag", "A <think>literal tag"),
+        ):
             with self.subTest(answer=answer):
                 clip = self.local_clip(answer=answer)
-                self.assertEqual(self.generate("ComfyUI Local", clip=clip, stop_sequences="END\nSTOP"), (expected,))
+                self.assertEqual(self.generate("ComfyUI Local", clip=clip, thinking="enabled", stop_sequences="END\nSTOP"), (expected,))
 
     def test_compact_stop_field_and_json_literal_sequences(self):
         field = next(field for field in node_module.GOATTextGeneratorSettings.define_schema().inputs if field.id == "stop_sequences")
@@ -1085,7 +1092,7 @@ class UniversalLLMTests(unittest.TestCase):
                         self.assertIn("@image10 corresponds to <image_2>", system)
 
     def test_local_empty_and_unfinished_reasoning_cannot_complete_blank(self):
-        for answer, message in (("<think>unfinished", "stopped during reasoning"), ("<think>done</think>", "no answer text"), (" \n", "no answer text"), ("STOP later", "no answer text")):
+        for answer, message in (("<think>unfinished", "stopped during reasoning"), ("<think>done</think>", "no answer text"), ("Only reasoning</think>", "no answer text"), (" \n", "no answer text"), ("STOP later", "no answer text")):
             with self.subTest(answer=answer), self.assertRaisesRegex(RuntimeError, message):
                 self.generate("ComfyUI Local", clip=self.local_clip(answer=answer), stop_sequences="STOP")
 
